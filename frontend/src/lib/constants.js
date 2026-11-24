@@ -25,7 +25,7 @@ export const ROLES = [
   ['admin', 'Admin'],
   ['owner', 'Property Owner'],
   ['tenant', 'Tenant'],
-  ['staff', 'Staff'],
+  ['manager', 'Property Manager'],
 ];
 
 // Roles a visitor may pick on the public registration form.
@@ -48,6 +48,7 @@ export const ROLE_MENUS = {
     { to: '/owner/properties', label: 'My Properties', icon: 'building' },
     { to: '/owner/applications', label: 'Applications', icon: 'file', badge: 'pending_applications', badgeLabel: 'pending' },
     { to: '/owner/payments', label: 'Rent Payments', icon: 'wallet', badge: 'pending_payments', badgeLabel: 'to confirm' },
+    { to: '/owner/finances', label: 'Finances', icon: 'chart' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
   ],
   tenant: [
@@ -57,10 +58,11 @@ export const ROLE_MENUS = {
     { to: '/payments', label: 'Rent & Payments', icon: 'wallet' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
   ],
-  staff: [
-    { to: '/dashboard/staff', label: 'Dashboard', icon: 'home' },
-    { to: null, label: 'Property Records', icon: 'building' },
-    { to: null, label: 'Applications', icon: 'file' },
+  manager: [
+    { to: '/dashboard/manager', label: 'Dashboard', icon: 'home' },
+    { to: '/owner/properties', label: 'Managed Properties', icon: 'building' },
+    { to: '/owner/applications', label: 'Applications', icon: 'file', badge: 'pending_applications', badgeLabel: 'pending' },
+    { to: '/owner/payments', label: 'Rent Payments', icon: 'wallet', badge: 'pending_payments', badgeLabel: 'to confirm' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
   ],
 };

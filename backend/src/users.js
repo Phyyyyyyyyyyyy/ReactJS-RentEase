@@ -7,12 +7,12 @@ export const ROLES = [
   ['admin', 'Admin'],
   ['owner', 'Property Owner'],
   ['tenant', 'Tenant'],
-  ['staff', 'Staff'],
+  ['manager', 'Property Manager'],
 ];
 export const ROLE_LABEL = Object.fromEntries(ROLES);
 
 // Roles a visitor may pick on the public registration form.
-// Admin and Staff accounts are created by an administrator.
+// Admin and Property Manager accounts are created by an administrator.
 export const SELF_REGISTER_ROLES = ROLES.filter(([role]) => role === 'tenant' || role === 'owner');
 
 // Philippine mobile number as GCash uses it: 09XXXXXXXXX (11 digits).
@@ -49,6 +49,7 @@ export function userJson(u) {
     role: u.role,
     role_display: ROLE_LABEL[u.role],
     is_active: Boolean(u.is_active),
+    email_verified: Boolean(u.email_verified_at),
     is_superuser: u.role === 'admin',
     date_joined: iso(u.date_joined),
     last_login: iso(u.last_login),
@@ -64,15 +65,20 @@ export function userJson(u) {
   return data;
 }
 
-/** Create an account. The password is hashed; it is never stored as plain text. */
+/**
+ * Create an account. The password is hashed; it is never stored as plain text.
+ * Accounts made this way (seed data, create-admin, admins) count as email-verified
+ * unless `email_verified: false` is passed; self-registration sends a link instead.
+ */
 export async function createUser(db, { username, email, password, first_name = '', last_name = '', role = 'tenant',
-  phone = '', gcash_name = '', gcash_number = '', is_active = true }) {
+  phone = '', gcash_name = '', gcash_number = '', is_active = true, email_verified = true }) {
+  const now = nowIso();
   const id = await db.insert(
     `INSERT INTO users (username, email, password, first_name, last_name, role, phone, gcash_name, gcash_number,
-       is_active, date_joined)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       is_active, date_joined, email_verified_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [username, email.toLowerCase(), await hashPassword(password), first_name, last_name, role, phone, gcash_name,
-      gcash_number, is_active ? 1 : 0, nowIso()],
+      gcash_number, is_active ? 1 : 0, now, email_verified ? now : null],
   );
   return db.get('SELECT * FROM users WHERE id = ?', [id]);
 }

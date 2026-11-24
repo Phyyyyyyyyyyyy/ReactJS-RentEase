@@ -20,7 +20,7 @@ afterEach(() => env.close());
 
 const newAccount = (overrides = {}) => ({
   first_name: 'Ana', last_name: 'Reyes', username: 'ana', email: 'ana@example.com', phone: '0917',
-  role: 'staff', password1: PASSWORD, password2: PASSWORD, ...overrides,
+  role: 'manager', password1: PASSWORD, password2: PASSWORD, ...overrides,
 });
 const edit = (user, overrides = {}) => ({
   first_name: user.first_name, last_name: user.last_name, email: user.email, phone: user.phone, role: user.role,
@@ -44,11 +44,11 @@ describe('users & access', () => {
     assert.deepEqual(json.users.map((u) => u.username), ['root']);
   });
 
-  it('creates Staff and Admin accounts', async () => {
+  it('creates Property Manager and Admin accounts', async () => {
     const response = await client.post('/admin/users/', newAccount());
     assert.equal(response.status, 201);
     const user = await db.get("SELECT * FROM users WHERE username = 'ana'");
-    assert.equal(user.role, 'staff');
+    assert.equal(user.role, 'manager');
     assert.ok(await checkPassword(PASSWORD, user.password));
     const dupe = await client.post('/admin/users/', newAccount({ email: 'other@example.com' }));
     assert.deepEqual(dupe.json.errors.username, ['This username is already taken.']);
@@ -74,7 +74,7 @@ describe('users & access', () => {
   });
 
   it("doesn't let admins lock themselves out", async () => {
-    const response = await client.put(`/admin/users/${admin.id}/`, edit(admin, { role: 'staff', is_active: false }));
+    const response = await client.put(`/admin/users/${admin.id}/`, edit(admin, { role: 'manager', is_active: false }));
     assert.equal(response.status, 400);
     assert.ok(response.json.errors.role);
     assert.ok(response.json.errors.is_active);

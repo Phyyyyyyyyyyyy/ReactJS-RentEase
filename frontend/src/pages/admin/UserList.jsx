@@ -55,7 +55,10 @@ export default function UserList() {
                           </div>
                         </td>
                         <td><span className="badge badge-info">{u.role_display}</span></td>
-                        <td>{u.is_active ? <span className="badge badge-success">Active</span> : <span className="badge badge-danger">Inactive</span>}</td>
+                        <td>
+                          {u.is_active ? <span className="badge badge-success">Active</span> : <span className="badge badge-danger">Inactive</span>}
+                          {!u.email_verified && <span className="badge badge-warning ml-1" title="Hasn't opened the verification email yet">Unverified</span>}
+                        </td>
                         <td>{formatDate(u.date_joined, 'M j, Y')}</td>
                         <td>{u.last_login ? formatDate(u.last_login, 'M j, Y g:i A') : 'Never'}</td>
                         <td><Link className="secondary-button compact" to={`/admin/users/${u.id}/edit`}>Edit</Link></td>

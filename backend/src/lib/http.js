@@ -74,6 +74,7 @@ export function endpoint(router, path, { roles, public: isPublic = false, upload
     if (acceptsUploads && req.is('multipart/form-data')) await parseUploads(req, res);
     req.body ??= {};
     const result = await handler(req, res);
+    if (res.headersSent) return; // the handler sent its own response (e.g. a CSV download)
     if (result instanceof Reply) res.status(result.status).json(result.body);
     else res.json(result);
   });

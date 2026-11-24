@@ -8,8 +8,10 @@
 import { Router } from 'express';
 import { isUniqueViolation } from '../db.js';
 import { Form } from '../lib/forms.js';
-import { endpoint, fail, formErrors, notFound, reply } from '../lib/http.js';
+import { endpoint, fail, formErrors, HttpError, notFound, reply } from '../lib/http.js';
 import { iso, money, nowIso, today } from '../lib/format.js';
+import { createLease } from '../leases.js';
+import { notify, runnersOfUnit } from '../notifications.js';
 import { displayName, userBrief } from '../users.js';
 
 export const PROPERTY_TYPES = [
@@ -34,6 +36,22 @@ const STATUS_LABEL = Object.fromEntries(APPLICATION_STATUSES);
 
 const TENANT = ['tenant'];
 const OWNER = ['owner'];
+// Owners and Property Managers both run properties.
+export const RUNNERS = ['owner', 'manager'];
+
+/** SQL: the signed-in user owns or manages property `alias` (params: user id twice). */
+export const RUNS = (alias) => `(${alias}.owner_id = ? OR ${alias}.manager_id = ?)`;
+
+const MANAGER_JOIN = 'LEFT JOIN users m ON m.id = p.manager_id';
+const MANAGER_COLUMNS = `m.username AS m_username, m.first_name AS m_first_name, m.last_name AS m_last_name,
+  m.email AS m_email, m.phone AS m_phone, m.profile_photo AS m_profile_photo`;
+
+/** Only the owner may change a property, its units, or its manager. */
+function requireOwner(req) {
+  if (req.user.role !== 'owner') {
+    throw new HttpError(403, { message: 'Only the property owner can change this.' });
+  }
+}
 
 // ------------------------------------------------------------------ JSON shapes
 
@@ -53,6 +71,11 @@ export function propertyJson(p) {
     if (extra in p) data[extra] = Number(p[extra]);
   }
   if ('min_rent' in p) data.min_rent = money(p.min_rent);
+  // The assigned Property Manager, when the query joined it in.
+  if ('m_username' in p) {
+    data.manager = p.manager_id ? userBrief({ id: p.manager_id, username: p.m_username, first_name: p.m_first_name,
+      last_name: p.m_last_name, email: p.m_email, phone: p.m_phone, profile_photo: p.m_profile_photo }, { contact: true }) : null;
+  }
   return data;
 }
 
@@ -288,6 +311,8 @@ export default function propertiesRoutes(db) {
         if (isUniqueViolation(error)) throw formErrors({ non_field_errors: [alreadyPending] });
         throw error;
       }
+      await notify(db, await runnersOfUnit(db, unit.id), 'application',
+        `${displayName(req.user)} applied for ${unit.name} at ${prop.name}.`, '/owner/applications');
       return reply(201, {
         id: applicationId,
         message: `Application for ${unit.name} submitted. The owner will review it soon.`,
@@ -343,29 +368,44 @@ export default function propertiesRoutes(db) {
     },
   });
 
-  // ----------------------------------------------------------------- owner
+  // ------------------------------------------------------- owner and manager
+  //
+  // Owners run their own properties. A Property Manager runs the properties an
+  // owner assigned to them: they can view them, review applications, and handle
+  // payments, but only the owner can edit properties and units or assign managers.
 
+  /** A property the signed-in owner owns (for changes). */
   const ownProperty = async (req) => {
+    requireOwner(req);
     const prop = await db.get('SELECT * FROM properties WHERE id = ? AND owner_id = ?', [id(req), req.user.id]);
     if (!prop) throw notFound();
     return prop;
   };
 
+  /** A property the signed-in owner owns or manager manages (for viewing). */
+  const runProperty = async (req) => {
+    const prop = await db.get(`SELECT p.*, ${MANAGER_COLUMNS} FROM properties p ${MANAGER_JOIN} WHERE p.id = ? AND ${RUNS('p')}`,
+      [id(req), req.user.id, req.user.id]);
+    if (!prop) throw notFound();
+    return prop;
+  };
+
   endpoint(router, '/owner/properties/', {
-    roles: OWNER,
+    roles: RUNNERS,
     GET: async (req) => {
       const properties = await db.all(
-        `SELECT p.*,
+        `SELECT p.*, ${MANAGER_COLUMNS},
            (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id) AS unit_count,
            (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id AND u.status = 'vacant') AS vacant_count,
            (SELECT COUNT(*) FROM applications a JOIN units u ON u.id = a.unit_id
              WHERE u.property_id = p.id AND a.status = 'pending') AS pending_count
-         FROM properties p WHERE p.owner_id = ? ORDER BY p.name, p.id`,
-        [req.user.id],
+         FROM properties p ${MANAGER_JOIN} WHERE ${RUNS('p')} ORDER BY p.name, p.id`,
+        [req.user.id, req.user.id],
       );
       return { properties: properties.map(propertyJson) };
     },
     POST: async (req) => {
+      requireOwner(req);
       const values = await cleanProperty(db, req.body, req.user.id);
       let newId;
       try {
@@ -385,15 +425,15 @@ export default function propertiesRoutes(db) {
   });
 
   endpoint(router, '/owner/properties/:id/', {
-    roles: OWNER,
+    roles: RUNNERS,
     GET: async (req) => {
-      const prop = await ownProperty(req);
+      const prop = await runProperty(req);
       const units = await db.all(
         `SELECT u.*, (SELECT COUNT(*) FROM applications a WHERE a.unit_id = u.id AND a.status = 'pending') AS pending_count
          FROM units u WHERE u.property_id = ? ORDER BY u.name, u.id`,
         [prop.id],
       );
-      return { property: propertyJson(prop), units: units.map(unitJson) };
+      return { property: propertyJson(prop), units: units.map(unitJson), can_edit: req.user.role === 'owner' };
     },
     PUT: async (req) => {
       const prop = await ownProperty(req);
@@ -415,6 +455,37 @@ export default function propertiesRoutes(db) {
       const prop = await ownProperty(req);
       await db.run('DELETE FROM properties WHERE id = ?', [prop.id]); // its units and applications go too
       return { message: `${prop.name} deleted.` };
+    },
+  });
+
+  // The owner picks a Property Manager for a property (or none).
+  endpoint(router, '/owner/properties/:id/manager/', {
+    roles: OWNER,
+    PUT: async (req) => {
+      const prop = await ownProperty(req);
+      const form = new Form(req.body);
+      const choice = form.text('manager', { required: false });
+      let manager = null;
+      if (choice) {
+        manager = /^\d+$/.test(choice)
+          && await db.get("SELECT * FROM users WHERE id = ? AND role = 'manager' AND is_active = 1", [Number(choice)]);
+        if (!manager) form.error('manager', 'Select a valid choice. That choice is not one of the available choices.');
+      }
+      form.check();
+      await db.run('UPDATE properties SET manager_id = ? WHERE id = ?', [manager ? manager.id : null, prop.id]);
+      return {
+        message: manager ? `${displayName(manager)} now manages ${prop.name}.` : `${prop.name} no longer has a manager.`,
+      };
+    },
+  });
+
+  // Active Property Managers an owner can assign.
+  endpoint(router, '/owner/managers/', {
+    roles: OWNER,
+    GET: async () => {
+      const managers = await db.all(
+        "SELECT * FROM users WHERE role = 'manager' AND is_active = 1 ORDER BY first_name, last_name, username");
+      return { managers: managers.map((m) => userBrief(m, { contact: true })) };
     },
   });
 
@@ -479,9 +550,9 @@ export default function propertiesRoutes(db) {
   });
 
   endpoint(router, '/owner/applications/', {
-    roles: OWNER,
+    roles: RUNNERS,
     GET: async (req) => {
-      const list = await applicationList(db, 'p.owner_id = ?', [req.user.id], String(req.query.status ?? 'pending'),
+      const list = await applicationList(db, RUNS('p'), [req.user.id, req.user.id], String(req.query.status ?? 'pending'),
         { allFirst: false });
       return {
         status: list.status,
@@ -492,13 +563,14 @@ export default function propertiesRoutes(db) {
   });
 
   endpoint(router, '/owner/applications/:id/:decision/', {
-    roles: OWNER,
+    roles: RUNNERS,
     POST: async (req) => {
       const { decision } = req.params;
       if (decision !== 'approve' && decision !== 'reject') throw notFound();
       const applicationId = id(req);
       return db.tx(async (t) => {
-        const a = await t.get(`${APPLICATION_SELECT} WHERE a.id = ? AND p.owner_id = ?`, [applicationId, req.user.id]);
+        const a = await t.get(`${APPLICATION_SELECT} WHERE a.id = ? AND ${RUNS('p')}`,
+          [applicationId, req.user.id, req.user.id]);
         if (!a) throw notFound();
         const tenantName = displayName(tenantOf(a));
         const notPending = () => fail('Only pending applications can be approved or rejected.');
@@ -509,6 +581,8 @@ export default function propertiesRoutes(db) {
           const { changes } = await t.run(
             "UPDATE applications SET status = 'rejected', updated_at = ? WHERE id = ? AND status = 'pending'", [now, a.id]);
           if (!changes) throw notPending();
+          await notify(t, a.tenant_id, 'application',
+            `Your application for ${a.property_name} ${a.unit_name} was not approved.`, '/applications');
           return { message: `${tenantName}'s application for ${a.unit_name} rejected.` };
         }
 
@@ -522,7 +596,15 @@ export default function propertiesRoutes(db) {
           "UPDATE applications SET status = 'approved', approved_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
           [now, now, a.id]);
         if (!approved.changes) throw notPending();
+        // The approval creates the lease (12 months from move-in, at the unit's current rent).
+        await createLease(t, { id: a.id, approved_at: now, preferred_move_in: a.preferred_move_in }, a.unit_rent);
+        await notify(t, a.tenant_id, 'application',
+          `Your application for ${a.property_name} ${a.unit_name} was approved! Your lease and rent are on the Rent & Payments page.`, '/payments');
         // The unit is taken now, so every other pending application for it is rejected.
+        const others = await t.all("SELECT tenant_id FROM applications WHERE unit_id = ? AND status = 'pending' AND id <> ?",
+          [a.unit_id, a.id]);
+        await notify(t, others.map((o) => o.tenant_id), 'application',
+          `Your application for ${a.property_name} ${a.unit_name} was not approved: the unit has been rented.`, '/applications');
         const { changes: rejected } = await t.run(
           "UPDATE applications SET status = 'rejected', updated_at = ? WHERE unit_id = ? AND status = 'pending' AND id <> ?",
           [now, a.unit_id, a.id]);

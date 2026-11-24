@@ -4,7 +4,10 @@ import { ledgersFor, tenanciesFor } from '../billing.js';
 import { ensureCsrfCookie, signIn, signOut } from '../lib/auth.js';
 import { deleteFile, imageType, INVALID_IMAGE, saveImage } from '../lib/files.js';
 import { Form } from '../lib/forms.js';
-import { endpoint, fail, formErrors, reply } from '../lib/http.js';
+import { endpoint, fail, formErrors, HttpError, reply } from '../lib/http.js';
+import { sendVerificationEmail, verifyEmailToken } from '../verification.js';
+import { remindTenant } from '../notifications.js';
+import { RUNS } from './properties.js';
 import { iso, money, nowIso } from '../lib/format.js';
 import { checkPassword, hashPassword, passwordProblems } from '../lib/passwords.js';
 import { minutes, RateLimiter } from '../lib/rateLimit.js';
@@ -65,10 +68,23 @@ export const DEFAULT_LIMITS = {
   loginPerAccount: { limit: 10, windowMs: 15 * 60_000 },
   loginPerAddress: { limit: 50, windowMs: 15 * 60_000 },
   signupPerAddress: { limit: 10, windowMs: 60 * 60_000 },
+  resendPerAccount: { limit: 3, windowMs: 15 * 60_000 },
+  resendPerAddress: { limit: 10, windowMs: 60 * 60_000 },
 };
 
-export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }) {
+export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS, mailer, appUrl }) {
   const router = Router();
+
+  /** Email a verification link; returns false (and logs why) if it couldn't be sent. */
+  async function emailLink(user) {
+    try {
+      await sendVerificationEmail(db, mailer, user, appUrl);
+      return true;
+    } catch (error) {
+      console.error(`Could not send the verification email to user ${user.id}: ${error.message}`);
+      return false;
+    }
+  }
 
   endpoint(router, '/auth/session/', {
     public: true,
@@ -116,6 +132,13 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }
         throw formErrors({ non_field_errors: [message] }, message);
       }
       failedLoginsPerAccount.reset(accountKey);
+      // Only said after the right password, so it doesn't reveal which emails have accounts.
+      if (!user.email_verified_at) {
+        throw new HttpError(403, {
+          code: 'email_unverified',
+          message: `Please verify your email address first. Open the link we sent to ${user.email}, then sign in again.`,
+        });
+      }
       await signIn(db, req, res, user);
       const fresh = await findUser(db, user.id);
       return { user: userJson(fresh), message: `Welcome back, ${user.first_name || user.username}!` };
@@ -142,8 +165,9 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }
       const form = new Form(req.body);
       const values = await validateNewAccount(db, form, SELF_REGISTER_ROLES);
       form.check();
+      let id;
       try {
-        await db.insert(
+        id = await db.insert(
           `INSERT INTO users (username, email, password, first_name, last_name, role, phone, date_joined)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [values.username, values.email, await hashPassword(values.password), values.first_name, values.last_name,
@@ -155,7 +179,51 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }
         throw error;
       }
       signupsPerAddress.hit(req.ip);
-      return reply(201, { message: 'Account created successfully. You can now sign in.' });
+      const sent = await emailLink(await findUser(db, id));
+      return reply(201, {
+        message: sent
+          ? `Account created. We sent a verification link to ${values.email}. Open it to activate your account, then sign in.`
+          : 'Account created, but we couldn’t send the verification email. Use “Resend verification email” on the sign-in page.',
+      });
+    },
+  });
+
+  endpoint(router, '/auth/verify-email/', {
+    public: true,
+    POST: async (req) => {
+      const user = await verifyEmailToken(db, req.body.token);
+      if (!user) {
+        throw fail('This verification link is invalid, was already used, or has expired. '
+          + 'Sign in and use “Resend verification email” to get a new one.');
+      }
+      return { message: 'Email verified. You can now sign in.' };
+    },
+  });
+
+  // Limit resends so this can't be used to flood someone's inbox.
+  const resendsPerAccount = new RateLimiter(limits.resendPerAccount);
+  const resendsPerAddress = new RateLimiter(limits.resendPerAddress);
+
+  endpoint(router, '/auth/resend-verification/', {
+    public: true,
+    POST: async (req, res) => {
+      const form = new Form(req.body);
+      const username = form.text('username', { max: 254 });
+      form.check();
+      const lookup = username.includes('@') ? 'email' : 'username';
+      const user = await db.get(`SELECT * FROM users WHERE LOWER(${lookup}) = LOWER(?)`, [username]);
+      const accountKey = user ? `user:${user.id}` : `name:${username.toLowerCase()}`;
+      const wait = Math.max(resendsPerAccount.retryAfter(accountKey), resendsPerAddress.retryAfter(req.ip));
+      if (wait) {
+        res.set('Retry-After', String(wait));
+        throw fail(`Too many emails requested. Please wait ${minutes(wait)} and try again.`, 429);
+      }
+      resendsPerAccount.hit(accountKey);
+      resendsPerAddress.hit(req.ip);
+      if (user && user.is_active && !user.email_verified_at) await emailLink(user);
+      // The same answer either way, so this doesn't reveal which accounts exist.
+      return { message: 'If that account exists and isn’t verified yet, we’ve sent a new link to its email address. '
+        + 'Check your inbox (and spam folder).' };
     },
   });
 
@@ -213,10 +281,20 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }
         values[field] = file ? await saveImage(mediaDir, folder, file) : '';
         await deleteFile(mediaDir, user[field]);
       }
+      // A new email address has to be verified too (needed for the next sign-in).
+      const emailChanged = values.email !== user.email.toLowerCase();
+      if (emailChanged) values.email_verified_at = null;
       const columns = Object.keys(values);
       await db.run(`UPDATE users SET ${columns.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
         [...columns.map((c) => values[c]), user.id]);
-      return { user: userJson(await findUser(db, user.id)), message: 'Profile updated successfully.' };
+      const updated = await findUser(db, user.id);
+      let message = 'Profile updated successfully.';
+      if (emailChanged) {
+        message = await emailLink(updated)
+          ? `Profile updated. We sent a link to ${updated.email}. Open it to verify your new address; you’ll need it to sign in next time.`
+          : 'Profile updated, but we couldn’t send a link to verify your new email. Use “Resend verification email” on the sign-in page.';
+      }
+      return { user: userJson(updated), message };
     },
   });
 
@@ -228,19 +306,21 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }
       let pendingPayments = 0;
       if (user.role === 'tenant') {
         pendingApplications = await count(db, "SELECT COUNT(*) AS n FROM applications WHERE tenant_id = ? AND status = 'pending'", [user.id]);
-      } else if (user.role === 'owner') {
+      } else if (user.role === 'owner' || user.role === 'manager') {
         pendingApplications = await count(db, `SELECT COUNT(*) AS n FROM applications a JOIN units u ON u.id = a.unit_id
-          JOIN properties p ON p.id = u.property_id WHERE p.owner_id = ? AND a.status = 'pending'`, [user.id]);
+          JOIN properties p ON p.id = u.property_id WHERE ${RUNS('p')} AND a.status = 'pending'`, [user.id, user.id]);
         pendingPayments = await countPendingPayments(db, user.id);
       }
-      return { pending_applications: pendingApplications, pending_payments: pendingPayments };
+      if (user.role === 'tenant') await remindTenant(db, user.id);
+      const unread = await count(db, 'SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND is_read = 0', [user.id]);
+      return { pending_applications: pendingApplications, pending_payments: pendingPayments, unread_notifications: unread };
     },
   });
 
   endpoint(router, '/dashboard/', {
     // The numbers for the signed-in user's own dashboard (one per role).
     GET: async (req) => {
-      const builders = { admin: adminDashboard, owner: ownerDashboard, tenant: tenantDashboard, staff: staffDashboard };
+      const builders = { admin: adminDashboard, owner: runnerDashboard, manager: runnerDashboard, tenant: tenantDashboard };
       return { role: req.user.role, ...(await builders[req.user.role](db, req.user)) };
     },
   });
@@ -252,10 +332,11 @@ export async function count(db, sql, params = []) {
   return Number((await db.get(sql, params)).n);
 }
 
-function countPendingPayments(db, ownerId) {
+/** GCash payments waiting for confirmation on properties the user owns or manages. */
+function countPendingPayments(db, userId) {
   return count(db, `SELECT COUNT(*) AS n FROM payments pay JOIN applications a ON a.id = pay.tenancy_id
     JOIN units u ON u.id = a.unit_id JOIN properties p ON p.id = u.property_id
-    WHERE p.owner_id = ? AND pay.status = 'pending'`, [ownerId]);
+    WHERE ${RUNS('p')} AND pay.status = 'pending'`, [userId, userId]);
 }
 
 async function adminDashboard(db) {
@@ -275,23 +356,25 @@ async function adminDashboard(db) {
   };
 }
 
-async function ownerDashboard(db, user) {
+/** Owner and Property Manager dashboards: the properties they own or manage. */
+async function runnerDashboard(db, user) {
   const pending = await db.all(
     `SELECT a.id, a.created_at, u.name AS unit_name, p.name AS property_name, a.tenant_id,
        t.username AS t_username, t.first_name AS t_first_name, t.last_name AS t_last_name,
        t.profile_photo AS t_profile_photo
      FROM applications a JOIN units u ON u.id = a.unit_id JOIN properties p ON p.id = u.property_id
      JOIN users t ON t.id = a.tenant_id
-     WHERE p.owner_id = ? AND a.status = 'pending'
+     WHERE ${RUNS('p')} AND a.status = 'pending'
      ORDER BY a.created_at DESC, a.id DESC`,
-    [user.id],
+    [user.id, user.id],
   );
-  const unitsSql = 'SELECT COUNT(*) AS n FROM units u JOIN properties p ON p.id = u.property_id WHERE p.owner_id = ?';
+  const me = [user.id, user.id];
+  const unitsSql = `SELECT COUNT(*) AS n FROM units u JOIN properties p ON p.id = u.property_id WHERE ${RUNS('p')}`;
   return {
     payments_to_confirm: await countPendingPayments(db, user.id),
-    property_count: await count(db, 'SELECT COUNT(*) AS n FROM properties WHERE owner_id = ?', [user.id]),
-    unit_count: await count(db, unitsSql, [user.id]),
-    vacant_units: await count(db, `${unitsSql} AND u.status = 'vacant'`, [user.id]),
+    property_count: await count(db, `SELECT COUNT(*) AS n FROM properties p WHERE ${RUNS('p')}`, me),
+    unit_count: await count(db, unitsSql, me),
+    vacant_units: await count(db, `${unitsSql} AND u.status = 'vacant'`, me),
     app_pending: pending.length,
     recent_pending: pending.slice(0, 5).map((a) => ({
       id: a.id,
@@ -327,13 +410,6 @@ async function tenantDashboard(db, user) {
     app_total: await apps(),
     app_pending: await apps('pending'),
     app_approved: await apps('approved'),
-  };
-}
-
-async function staffDashboard(db) {
-  return {
-    tenant_count: await count(db, "SELECT COUNT(*) AS n FROM users WHERE role = 'tenant' AND is_active = 1"),
-    owner_count: await count(db, "SELECT COUNT(*) AS n FROM users WHERE role = 'owner' AND is_active = 1"),
   };
 }
 

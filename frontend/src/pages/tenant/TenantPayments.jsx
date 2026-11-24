@@ -1,8 +1,9 @@
 import { Link } from 'react-router';
 import { usePageTitle } from '../../components/AppLayout';
 import Icon from '../../components/Icon';
-import { balanceTone, MonthsTable, PaymentStatus } from '../../components/payments';
+import { balanceTone, MonthsTable, PaymentStatus, ReceiptLink } from '../../components/payments';
 import { BusyButton, EmptyState, LoadError, PageHeader, PageSkeleton } from '../../components/ui';
+import { LeaseSummary } from '../../components/lease';
 import { useAction } from '../../hooks/useAction';
 import { useApi } from '../../hooks/useApi';
 import { formatDate, peso, plural, positive } from '../../lib/format';
@@ -47,7 +48,7 @@ export default function TenantPayments() {
                       </div>
                       <p className="m-0 mt-0.5 text-xs text-slate-400">
                         {formatDate(p.paid_on, 'M j, Y')} · {p.tenancy.unit.property.name} {p.tenancy.unit.name}
-                        {p.recorded_by_owner && ' · recorded by owner'}{p.note && ` · “${p.note}”`}
+                        {p.recorded_by_owner && ' · recorded by owner'}{p.note && ` · “${p.note}”`}<ReceiptLink payment={p} />
                       </p>
                       {p.status === 'rejected' && p.owner_note && <p className="m-0 mt-1 text-xs font-semibold text-red-600">Owner: {p.owner_note}</p>}
                     </div>
@@ -83,16 +84,22 @@ function LedgerCard({ ledger }) {
             {!ledger.active && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">Tenancy ended</span>}
           </div>
           <p className="m-0 mt-0.5 text-sm text-slate-500">
-            {peso(t.unit.monthly_rent)}/month · Owner: {owner.full_name}{owner.phone && ` · ${owner.phone}`}
+            {peso(t.lease?.monthly_rent ?? t.unit.monthly_rent)}/month · Owner: {owner.full_name}{owner.phone && ` · ${owner.phone}`}
           </p>
+          <div className="mt-1.5"><LeaseSummary lease={t.lease} /></div>
         </div>
-        {(balance || ledger.active) && (owner.accepts_gcash ? (
-          <Link to={`/payments/${t.id}/gcash`} className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white no-underline shadow-md shadow-blue-600/20 transition hover:bg-brand-dark">
-            <Icon name="phone" size={16} />Pay with GCash
-          </Link>
-        ) : (
-          <span className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">Your owner hasn't set up GCash yet. Pay them in person.</span>
-        ))}
+        {(balance || ledger.active) && (
+          <div className="flex flex-wrap gap-2">
+            <Link to={`/payments/${t.id}/online`} className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white no-underline shadow-md shadow-blue-600/20 transition hover:bg-brand-dark">
+              <Icon name="phone" size={16} />Pay online
+            </Link>
+            {owner.accepts_gcash && (
+              <Link to={`/payments/${t.id}/gcash`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 no-underline transition hover:bg-slate-50">
+                Sent GCash already? Add the reference
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

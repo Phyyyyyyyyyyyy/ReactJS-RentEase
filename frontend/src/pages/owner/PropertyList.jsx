@@ -2,19 +2,23 @@ import { Link } from 'react-router';
 import { usePageTitle } from '../../components/AppLayout';
 import Icon from '../../components/Icon';
 import { CARD_GRADIENTS, EmptyState, LoadError, PageHeader, PageSkeleton, PingDot } from '../../components/ui';
+import { useAuth } from '../../context/AuthContext';
 import { useApi } from '../../hooks/useApi';
 
 export default function PropertyList() {
-  usePageTitle('My Properties', 'My properties');
+  const { user } = useAuth();
+  const isOwner = user.role === 'owner';
+  usePageTitle(isOwner ? 'My Properties' : 'Managed Properties', isOwner ? 'My properties' : 'Managed properties');
   const { data, error } = useApi('/owner/properties/');
 
   return (
     <div className="grid gap-6">
-      <PageHeader eyebrow="Property owner" title="My properties"
-        text="Add your rentals and their units. Properties with a vacant unit appear in tenants' search.">
-        <Link to="/owner/properties/new" className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white no-underline shadow-md shadow-blue-600/20 hover:bg-brand-dark">
+      <PageHeader eyebrow={isOwner ? 'Property owner' : 'Property manager'} title={isOwner ? 'My properties' : 'Managed properties'}
+        text={isOwner ? "Add your rentals and their units. Properties with a vacant unit appear in tenants' search."
+          : 'The properties their owners assigned to you. You review their applications and rent payments.'}>
+        {isOwner && <Link to="/owner/properties/new" className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white no-underline shadow-md shadow-blue-600/20 hover:bg-brand-dark">
           <Icon name="building" size={16} />Add property
-        </Link>
+        </Link>}
       </PageHeader>
 
       {error && <LoadError error={error} />}
@@ -41,6 +45,11 @@ export default function PropertyList() {
                 <div>
                   <h3 className="m-0 text-base font-bold text-slate-900">{p.name}</h3>
                   <p className="m-0 mt-1 text-xs text-slate-500">{p.address}, {p.city}</p>
+                  {isOwner && (
+                    <p className="m-0 mt-1 text-xs text-slate-500">
+                      Manager: {p.manager ? <strong className="text-slate-700">{p.manager.full_name}</strong> : <span>none</span>}
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-lg bg-slate-50 py-2"><strong className="block text-base text-slate-900">{p.unit_count}</strong><span className="text-[11px] text-slate-500">Units</span></div>
@@ -51,13 +60,16 @@ export default function PropertyList() {
                   <p className="m-0 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">No units yet, so tenants can't find this property. Add a unit to list it.</p>
                 )}
                 <div className="mt-auto flex gap-2 border-t border-slate-100 pt-4">
-                  <Link to={`/owner/properties/${p.id}`} className="flex-1 rounded-xl bg-brand px-4 py-2 text-center text-xs font-bold text-white no-underline shadow-md shadow-blue-600/20 hover:bg-brand-dark">Manage units</Link>
-                  <Link to={`/owner/properties/${p.id}/edit`} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 no-underline hover:bg-slate-50">Edit</Link>
+                  <Link to={`/owner/properties/${p.id}`} className="flex-1 rounded-xl bg-brand px-4 py-2 text-center text-xs font-bold text-white no-underline shadow-md shadow-blue-600/20 hover:bg-brand-dark">{isOwner ? 'Manage units' : 'View units'}</Link>
+                  {isOwner && <Link to={`/owner/properties/${p.id}/edit`} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 no-underline hover:bg-slate-50">Edit</Link>}
                 </div>
               </div>
             </article>
           ))}
         </section>
+      ) : !isOwner ? (
+        <EmptyState icon="building" title="No properties assigned to you yet"
+          text="A property owner assigns you to their property; it then appears here." />
       ) : (
         <EmptyState icon="building" title="You haven't listed a property yet"
           text="Add your first property, then its units, and tenants can start applying.">

@@ -25,7 +25,7 @@ let owner;
 let otherOwner;
 let tenant;
 let otherTenant;
-let staff;
+let manager;
 let prop;
 let vacant;
 let occupied;
@@ -39,7 +39,7 @@ async function world(options) {
   otherOwner = await makeUser(db, 'owner2', 'owner');
   tenant = await makeUser(db, 'tenant', 'tenant');
   otherTenant = await makeUser(db, 'tenant2', 'tenant');
-  staff = await makeUser(db, 'staffer', 'staff');
+  manager = await makeUser(db, 'mgr', 'manager');
   prop = await makeProperty(db, owner, { name: 'Lahug Apartments', address: 'Salinas Dr' });
   vacant = await makeUnit(db, prop, { name: '101', rent: 8500 });
   occupied = await makeUnit(db, prop, { name: '102', rent: 8000, status: 'occupied' });
@@ -60,7 +60,7 @@ describe('the 14 attacks', () => {
   beforeEach(() => world());
 
   it('1. Type /admin: only admins can use the admin API', async () => {
-    for (const user of [tenant, owner, staff]) {
+    for (const user of [tenant, owner, manager]) {
       await client.login(user);
       assert.equal((await client.get('/admin/users/')).status, 403);
       assert.equal((await client.get(`/admin/users/${admin.id}/`)).status, 403);
@@ -199,10 +199,10 @@ describe('the 14 attacks', () => {
     assert.equal(await count("SELECT COUNT(*) AS n FROM applications WHERE unit_id = ? AND status = 'approved'", [vacant.id]), 1);
   });
 
-  it("8. Admin at signup: you can't make yourself an admin or staff", async () => {
+  it("8. Admin at signup: you can't make yourself an admin or manager", async () => {
     const base = { first_name: 'Eve', last_name: 'Hacker', email: 'eve@example.com', phone: '0917',
       password1: PASSWORD, password2: PASSWORD };
-    for (const role of ['admin', 'staff', 'ADMIN', 'superuser']) {
+    for (const role of ['admin', 'manager', 'ADMIN', 'superuser']) {
       const response = await client.post('/auth/register/', { ...base, username: `eve_${role}`, role });
       assert.equal(response.status, 400, role);
     }

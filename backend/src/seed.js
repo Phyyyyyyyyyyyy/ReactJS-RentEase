@@ -12,7 +12,7 @@ const DEMO_USERS = [
   ['admin', 'admin@rentease.local', 'System', 'Administrator', 'admin', '0917 000 0001'],
   ['owner', 'owner@rentease.local', 'Maria', 'Santos', 'owner', '0917 000 0002'],
   ['tenant', 'tenant@rentease.local', 'Juan', 'Dela Cruz', 'tenant', '0917 000 0003'],
-  ['staff', 'staff@rentease.local', 'Ana', 'Reyes', 'staff', '0917 000 0004'],
+  ['manager', 'manager@rentease.local', 'Ana', 'Reyes', 'manager', '0917 000 0004'],
 ];
 
 const V = 'vacant';
@@ -22,6 +22,7 @@ const DEMO_PROPERTIES = [
     name: 'Cebu City Residences', property_type: 'apartment', address: 'Salinas Drive, Lahug', city: 'Cebu City',
     description: 'Accessible apartment property near schools, offices, and public transportation.',
     amenities: 'Wi-Fi Ready, Parking, CCTV',
+    managed: true, // the demo manager looks after this one
     units: [['Unit 101', 1, 1, 28, 8500, V], ['Unit 102', 1, 1, 28, 8500, O], ['Unit 201', 2, 1, 40, 12000, V]],
   },
   {
@@ -53,17 +54,19 @@ export async function seedUsers(db, password = DEMO_PASSWORD, log = console.log)
 export async function seedProperties(db, password = DEMO_PASSWORD, log = console.log) {
   if (!await db.get("SELECT 1 AS x FROM users WHERE username = 'owner'")) await seedUsers(db, password, log);
   const owner = await db.get("SELECT id FROM users WHERE username = 'owner'");
+  const manager = await db.get("SELECT id FROM users WHERE username = 'manager' AND role = 'manager'");
 
-  for (const { units, ...data } of DEMO_PROPERTIES) {
+  for (const { units, managed, ...data } of DEMO_PROPERTIES) {
     if (await db.get('SELECT 1 AS x FROM properties WHERE name = ?', [data.name])) {
       log(`  skip   ${data.name} (already exists)`);
       continue;
     }
     await db.tx(async (t) => {
       const propertyId = await t.insert(
-        `INSERT INTO properties (owner_id, name, property_type, address, city, description, amenities, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [owner.id, data.name, data.property_type, data.address, data.city, data.description, data.amenities, nowIso()],
+        `INSERT INTO properties (owner_id, manager_id, name, property_type, address, city, description, amenities, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [owner.id, managed && manager ? manager.id : null, data.name, data.property_type, data.address, data.city,
+          data.description, data.amenities, nowIso()],
       );
       for (const [name, beds, baths, area, rent, status] of units) {
         await t.insert(

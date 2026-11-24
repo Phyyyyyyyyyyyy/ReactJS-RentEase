@@ -13,7 +13,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
-import { schemaSql } from './schema.js';
+import { ADDED_COLUMNS, columnType, DATA_MIGRATIONS, schemaSql } from './schema.js';
 
 function normalize(params) {
   return params.map((v) => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v));
@@ -101,6 +101,13 @@ class SqliteDatabase {
 
   async migrate() {
     this.conn.exec(schemaSql('sqlite'));
+    for (const { table, column, type, fill } of ADDED_COLUMNS) {
+      const columns = this.conn.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+      if (!columns.includes(column)) {
+        this.conn.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${columnType(type, 'sqlite')};${fill ? ` ${fill};` : ''}`);
+      }
+    }
+    for (const sql of DATA_MIGRATIONS) this.conn.exec(sql);
   }
 
   async close() {
@@ -202,6 +209,16 @@ class PostgresDatabase {
 
   async migrate() {
     await this.pool.query(schemaSql('postgres'));
+    for (const { table, column, type, fill } of ADDED_COLUMNS) {
+      const { rowCount } = await this.pool.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2",
+        [table, column],
+      );
+      if (!rowCount) {
+        await this.pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${columnType(type, 'postgres')};${fill ? ` ${fill};` : ''}`);
+      }
+    }
+    for (const sql of DATA_MIGRATIONS) await this.pool.query(sql);
   }
 
   async close() {

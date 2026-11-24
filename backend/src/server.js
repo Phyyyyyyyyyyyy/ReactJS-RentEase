@@ -2,6 +2,7 @@
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { openDatabase } from './db.js';
+import { backfillLeases } from './leases.js';
 import { DEMO_PASSWORD, seedProperties, seedUsers } from './seed.js';
 
 let db;
@@ -11,6 +12,10 @@ try {
   console.error(`Could not open the database. ${error.message}`);
   process.exit(1);
 }
+
+// Approved tenancies from before leases existed get one now.
+const added = await backfillLeases(db);
+if (added) console.log(`Created ${added} lease${added === 1 ? '' : 's'} for existing tenancies.`);
 
 if (config.seedDemoData) {
   const password = process.env.DEMO_PASSWORD || DEMO_PASSWORD;
@@ -23,6 +28,9 @@ if (config.seedDemoData) {
 }
 
 const app = createApp(db);
+if (!config.resendApiKey) {
+  console.warn('Note: RESEND_API_KEY is not set, so verification emails are printed in this log instead of sent.');
+}
 
 const server = app.listen(config.port, config.host, () => {
   const where = config.databaseUrl ? 'PostgreSQL (DATABASE_URL)' : config.sqlitePath;

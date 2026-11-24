@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useParams } from 'react-router';
 import { usePageTitle } from '../../components/AppLayout';
 import Icon from '../../components/Icon';
+import { LeaseManager } from '../../components/lease';
 import { balanceTone, MonthsTable, PaymentStatus, ReceiptLink } from '../../components/payments';
 import { Avatar, BackLink, BusyButton, Field, FormErrors, LoadError, PageSkeleton } from '../../components/ui';
 import { useAction } from '../../hooks/useAction';
@@ -67,12 +68,14 @@ function TenancyView({ data, reload }) {
           <span className="text-[11px] font-extrabold uppercase tracking-widest text-brand">{t.unit.property.name} · {t.unit.name}</span>
           <h1 className="m-0 mt-0.5 text-2xl font-bold tracking-tight text-slate-900">{t.tenant.full_name}</h1>
           <p className="m-0 mt-0.5 text-sm text-slate-500">
-            {peso(t.unit.monthly_rent)}/month · renting since {formatDate(t.tenancy_start, 'M j, Y')}
+            {peso(t.lease?.monthly_rent ?? t.unit.monthly_rent)}/month · renting since {formatDate(t.tenancy_start, 'M j, Y')}
             {t.tenant.phone && ` · ${t.tenant.phone}`}
             {!ledger.active && <> · <strong>tenancy ended</strong></>}
           </p>
         </div>
       </div>
+
+      {t.lease && <LeaseManager lease={t.lease} unitName={t.unit.name} onChange={reload} />}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className={`rounded-xl ${balanceTone(ledger)} p-4`}>

@@ -16,17 +16,29 @@ The whole project is JavaScript: a **React single-page app** in `frontend/` talk
 
 ```
 backend/            Node.js API (Express)
-  src/routes/       accounts.js, properties.js, payments.js, admin.js: every /api endpoint
+  src/routes/       every /api endpoint, one file per area (see "Who owns what" below)
   src/billing.js    monthly rent charges and balances
+  src/leases.js     creating leases on approval
+  src/gcash.js      GCashGateway (sandbox online payments)
+  src/notifications.js  in-app notifications and rent reminders
+  src/verification.js   email verification links (sent with src/lib/mailer.js)
   src/schema.js     database tables
   src/lib/          sessions + CSRF, form validation, passwords, uploads
   scripts/          seed.js (demo data), create-admin.js
   test/             API tests (node --test)
 frontend/           React app
-  src/pages/        one component per page (auth, dashboards, tenant/, owner/, admin/)
+  src/pages/        one component per page (auth, dashboards, tenant/, owner/, admin/, Notifications, Receipt)
   src/components/   layout, sidebar, form fields, badges, tables
   src/lib/api.js    fetch wrapper (sends the CSRF token)
 ```
+
+### Who owns what (team split)
+
+| Member | Area | Backend | Frontend pages |
+|---|---|---|---|
+| 1: Properties | Property, Unit, Expense, FinancialReport | `routes/properties.js`, `routes/finances.js` | `owner/PropertyList`, `PropertyManage`, `PropertyForm`, `UnitForm`, `Finances`, `tenant/Browse`, `PropertyDetail` |
+| 2: Applications & Leases | RentalApplication, Lease, user & role management | `routes/properties.js` (applications), `routes/leases.js`, `leases.js`, `routes/admin.js` | `owner/OwnerApplications`, `tenant/MyApplications`, `EditApplication`, `components/lease.jsx`, `admin/` |
+| 3: Payments & Notifications | Payment, GCashGateway, Notification | `routes/payments.js`, `routes/gcash.js`, `gcash.js`, `billing.js`, `routes/notifications.js`, `notifications.js` | `tenant/TenantPayments`, `GCashPay`, `OnlinePay`, `Checkout`, `Receipt`, `Notifications`, `owner/OwnerPayments`, `OwnerTenancy` |
 
 ## Running it locally
 
@@ -51,7 +63,7 @@ npm run dev           # http://localhost:5173
 
 Open **http://localhost:5173/**. The Vite dev server forwards `/api` and `/media` to the API, so the browser sees one site and the session cookie just works.
 
-Demo accounts (after `npm run seed`): `admin`, `owner`, `tenant`, `staff`, all with password `RentEase@2026`. To create your own admin instead, run `npm run create-admin` in `backend/`.
+Demo accounts (after `npm run seed`): `admin`, `owner`, `manager` (manages Cebu City Residences), `tenant`, all with password `RentEase@2026`. To create your own admin instead, run `npm run create-admin` in `backend/`.
 
 ### Settings
 
@@ -76,6 +88,7 @@ The build installs both apps and builds the React app; the API then serves it at
 Environment variables:
 
 - `DATABASE_URL` (strongly recommended): a Supabase/Postgres connection string. **Without it, data lives in a SQLite file that Render erases on every deploy and restart.** Uploaded photos are also erased unless you add a Render Disk.
+- `RESEND_API_KEY` (needed for sign-ups): sends the email-verification links through [Resend](https://resend.com). Without it, the links only appear in the Render log. With Resend's test sender (`onboarding@resend.dev`), emails only reach the address you signed up to Resend with. To email anyone, verify a domain in Resend and set `EMAIL_FROM` (e.g. `RentEase <noreply@yourdomain.com>`).
 - `SEED_DEMO_DATA=true` (optional): create the demo accounts and properties on startup (Render's free plan has no shell for `npm run seed`). Also set `DEMO_PASSWORD` to something private, or anyone who reads this README can sign in as `admin`.
 
 To try the Render build locally, stop the dev servers first: on Windows, `npm ci` can't replace `node_modules` while they're running.
@@ -87,32 +100,41 @@ cd backend
 npm test
 ```
 
-124 tests cover registration, sign-in (including CSRF), role access, browsing and applying, owner property/unit/application management, rent billing, GCash/in-person payments, uploads, and user management. [`test/security.test.js`](backend/test/security.test.js) tries 14 common attacks on the app (admin pages, changing IDs in URLs, negative amounts, faked payments, double-submits, password guessing, script injection, fake uploads, SQL injection, and more) and checks that each one fails.
+176 tests cover registration, sign-in (including CSRF), email verification, role access, property managers, browsing and applying, owner property/unit/application management, leases, rent billing, GCash online and manual payments, receipts, expenses and financial reports, notifications, uploads, and user management. [`test/security.test.js`](backend/test/security.test.js) tries 14 common attacks on the app (admin pages, changing IDs in URLs, negative amounts, faked payments, double-submits, password guessing, script injection, fake uploads, SQL injection, and more) and checks that each one fails.
 
 ## Features
 
 ### Accounts
-- **Register** as a Tenant or Property Owner (Admin and Staff accounts are created by an admin). All fields required, unique username and email, password rules (length, common passwords, all-numeric, too similar to your name), passwords stored as PBKDF2 hashes.
+- **Register** as a Tenant or Property Owner (Admin and Property Manager accounts are created by an admin). New accounts get an email with a link (valid 24 hours) and can't sign in until they open it; the sign-in page can resend it, and changing your email sends a new link. All fields required, unique username and email, password rules (length, common passwords, all-numeric, too similar to your name), passwords stored as PBKDF2 hashes.
 - **Sign in** with username or email. **Sign out** from the sidebar or top bar.
 - **Role-based dashboards**: each role sees its own dashboard and sidebar. Opening another role's page sends you back to your own dashboard with an error message. Signed-out visitors go to the login page and come back after signing in.
 - **Profile**: view and edit your name, email, contact number, and photo. Owners also set their GCash number, account name, and QR code.
 
 ### Admins
-- **Users & Access**: search and filter all accounts, create accounts with any role, change roles, reset passwords, and deactivate accounts (which signs the person out). Admins can't remove their own Admin role or deactivate themselves.
+- **Users & Access**: search and filter all accounts (unverified emails are marked), create accounts with any role (already verified), mark an email verified, change roles, reset passwords, and deactivate accounts (which signs the person out). Admins can't remove their own Admin role or deactivate themselves.
 
 ### Tenants
 - **Browse** properties that have a vacant unit; search by name, address, or city and filter by type and maximum rent.
 - **Apply** for a vacant unit with an optional move-in date and message. No past dates, no occupied units, one pending application per unit.
 - **My Applications** with status tabs; edit or withdraw while pending.
-- **Rent & Payments**: monthly balance, overdue months, credit, and history. **Pay with GCash**: send to the owner's number or QR code, then submit the 13-digit reference number (and optionally a receipt screenshot). Pending submissions can be cancelled.
+- **Rent & Payments**: monthly balance, overdue months, credit, history, and the lease (dates, rent, deposit).
+- **Pay online with GCash**: choose an amount, pay on the checkout screen, and the payment counts immediately with a printable official receipt. This runs in **sandbox (test) mode**: no real money moves. Real GCash payments need a merchant account with a provider such as PayMongo; `src/gcash.js` is where it would plug in.
+- **Already sent GCash?** Submit the 13-digit reference number (and optionally a screenshot) for the owner to confirm. Pending submissions can be cancelled.
+- **Notifications** (bell in the top bar): application results, payment confirmations, lease changes, and rent reminders (due within 5 days, and monthly while overdue).
 
 ### Property owners
-- **My Properties**: add, edit, and delete properties (no duplicates at the same address) and their units (unique names, rent above zero, Vacant/Occupied).
-- **Applications**: approve or reject. Approving marks the unit occupied and rejects the other pending applications for it.
-- **Rent Payments**: confirm or reject tenants' GCash payments, record cash/bank/other payments (they count immediately), "Mark paid" shortcuts per month, and void mistakes.
+- **My Properties**: add, edit, and delete properties (no duplicates at the same address) and their units (unique names, rent above zero, Vacant/Occupied). **Assign a Property Manager** to a property.
+- **Applications**: approve or reject. Approving creates a **12-month lease** at the unit's rent, marks the unit occupied, and rejects the other pending applications for it.
+- **Leases**: renew (new end date, optionally a new rent for months not billed yet), terminate (rent stops after this month and the unit becomes vacant), and set the deposit.
+- **Rent Payments**: confirm or reject tenants' GCash payments, record cash/bank/other payments (they count immediately), "Mark paid" shortcuts per month, void mistakes, and print receipts.
+- **Finances**: record expenses per property (repairs, utilities, taxes...), and see rent received, expenses, and net income per property for any period, with CSV export.
+- **Notifications** for new applications and GCash payments to confirm.
+
+### Property managers
+- See the properties owners assigned to them (view only), review their applications, confirm their payments, and renew or terminate their leases. Owners keep full control; managers can't edit properties, units, or finances.
 
 ### Rent billing
-Once approved, the tenant is billed the unit's rent every month while the unit is occupied, starting the month of move-in (never before approval). Rent is due on the last day of the month. Confirmed payments are applied to the oldest unpaid month first; anything extra becomes credit for future months.
+Once approved, the tenant is billed the lease's monthly rent every month from the lease start (move-in, never before approval) to its end date, while the unit is occupied. A terminated or expired lease stops billing. Rent is due on the last day of the month. Confirmed payments are applied to the oldest unpaid month first; anything extra becomes credit for future months.
 
 ### Security
 - Every API query is filtered by the signed-in user, so other people's records return 404.

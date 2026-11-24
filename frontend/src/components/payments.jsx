@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { formatDate, peso, positive } from '../lib/format';
 
 export function PaymentStatus({ payment }) {
@@ -84,10 +85,13 @@ export function balanceTone(ledger) {
   return 'bg-emerald-50';
 }
 
+/** Links to the tenant's uploaded GCash screenshot and, once confirmed, the official receipt. */
 export function ReceiptLink({ payment }) {
-  if (!payment.proof) return null;
   return (
-    <> · <a href={payment.proof} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand">View receipt</a></>
+    <>
+      {payment.proof && <> · <a href={payment.proof} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand">Screenshot</a></>}
+      {payment.status === 'confirmed' && <> · <Link to={`/payments/receipt/${payment.id}`} className="font-semibold text-brand">Receipt</Link></>}
+    </>
   );
 }
 

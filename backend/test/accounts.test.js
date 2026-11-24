@@ -24,7 +24,7 @@ describe('registration', () => {
   it('creates the account and hashes the password', async () => {
     const response = await client.post('/auth/register/', data());
     assert.equal(response.status, 201);
-    assert.match(response.json.message, /Account created successfully/);
+    assert.match(response.json.message, /Account created\. We sent a verification link to juan@example\.com/);
     const user = await findByUsername('juan');
     assert.ok(user.password.startsWith('pbkdf2_sha256$'));
     assert.ok(await checkPassword(PASSWORD, user.password));
@@ -145,7 +145,7 @@ describe('role dashboards', () => {
   });
 
   it('gives each role its own dashboard', async () => {
-    const expected = { admin: 'total_users', owner: 'property_count', tenant: 'app_total', staff: 'tenant_count' };
+    const expected = { admin: 'total_users', owner: 'property_count', tenant: 'app_total', manager: 'property_count' };
     for (const [role, key] of Object.entries(expected)) {
       await client.login(await makeUser(db, `user_${role}`, role));
       const { json } = await client.get('/dashboard/');
@@ -186,7 +186,7 @@ describe('profile', () => {
     const response = await client.postForm('/profile/', {
       first_name: 'Alicia', last_name: 'Reyes', email: 'alicia@example.com', phone: '0999',
     });
-    assert.equal(response.json.message, 'Profile updated successfully.');
+    assert.match(response.json.message, /We sent a link to alicia@example\.com/); // the new email must be verified
     const fresh = await reload(db, 'users', user);
     assert.deepEqual([fresh.first_name, fresh.email, fresh.phone], ['Alicia', 'alicia@example.com', '0999']);
     assert.equal((await reload(db, 'users', other)).email, 'bob@example.com');

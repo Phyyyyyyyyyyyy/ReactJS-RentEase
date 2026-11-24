@@ -46,6 +46,18 @@ export const config = {
   // (useful where there's no shell to run `npm run seed`, like Render's free plan).
   seedDemoData: flag(process.env.SEED_DEMO_DATA),
 
+  // The site's address, used in links inside emails. On Render it is filled in
+  // automatically (RENDER_EXTERNAL_URL). It is never taken from the request,
+  // so a forged Host header can't make emails link to another site.
+  appUrl: (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173').replace(/\/+$/, ''),
+
+  // Emails are sent with Resend (https://resend.com) when RESEND_API_KEY is set.
+  // Without it, emails are printed in the server log instead (fine for local testing).
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  // Resend's test address works without your own domain, but only delivers to
+  // the email you signed up to Resend with. Use an address on a verified domain to email anyone.
+  emailFrom: process.env.EMAIL_FROM || 'RentEase <onboarding@resend.dev>',
+
   mediaDir: process.env.MEDIA_DIR || path.join(BACKEND_DIR, 'media'),
   frontendDist: path.resolve(BACKEND_DIR, '..', 'frontend', 'dist'),
 };

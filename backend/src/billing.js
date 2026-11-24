@@ -47,12 +47,15 @@ const TENANCY_SELECT = `
     u.name AS unit_name, u.monthly_rent AS unit_rent, u.status AS unit_status,
     p.id AS property_id, p.name AS property_name, p.owner_id,
     ${PERSON('t')}, ${PERSON('o')},
-    o.gcash_name AS o_gcash_name, o.gcash_number AS o_gcash_number, o.gcash_qr AS o_gcash_qr
+    o.gcash_name AS o_gcash_name, o.gcash_number AS o_gcash_number, o.gcash_qr AS o_gcash_qr,
+    l.id AS lease_id, l.start_date AS lease_start, l.end_date AS lease_end, l.monthly_rent AS lease_rent,
+    l.deposit AS lease_deposit, l.status AS lease_status, l.terminated_at AS lease_terminated_at
   FROM applications a
   JOIN units u ON u.id = a.unit_id
   JOIN properties p ON p.id = u.property_id
   JOIN users t ON t.id = a.tenant_id
   JOIN users o ON o.id = p.owner_id
+  LEFT JOIN leases l ON l.application_id = a.id
   WHERE a.status = 'approved' AND a.approved_at IS NOT NULL`;
 
 /** Columns named `<prefix>_x` in `row`, as an object { id, x, ... }. */
@@ -65,13 +68,20 @@ export function person(row, prefix, id) {
 }
 
 function tenancyFromRow(r) {
+  const lease = r.lease_id ? {
+    id: r.lease_id, start_date: r.lease_start, end_date: r.lease_end, monthly_rent: r.lease_rent,
+    deposit: r.lease_deposit, status: r.lease_status, terminated_at: r.lease_terminated_at,
+  } : null;
   return {
     id: r.id,
     tenant_id: r.tenant_id,
     unit_id: r.unit_id,
     preferred_move_in: r.preferred_move_in,
     approved_at: r.approved_at,
-    start: tenancyStart(r),
+    // Tenancies approved before leases existed have no lease: billed from approval at the unit's rent.
+    lease,
+    start: lease ? lease.start_date : tenancyStart(r),
+    rent: lease ? lease.monthly_rent : r.unit_rent,
     tenant: person(r, 't', r.tenant_id),
     owner: person(r, 'o', r.owner_id),
     unit: { id: r.unit_id, name: r.unit_name, monthly_rent: r.unit_rent, status: r.unit_status },
@@ -79,12 +89,14 @@ function tenancyFromRow(r) {
   };
 }
 
-/** Approved applications (tenancies), newest approval first. Filter by tenant, owner, and/or id. */
-export async function tenanciesFor(db, { tenantId, ownerId, id } = {}) {
+/** Approved applications (tenancies), newest approval first. Filter by tenant, owner, owner-or-manager, and/or id. */
+export async function tenanciesFor(db, { tenantId, ownerId, runnerId, id } = {}) {
   let sql = TENANCY_SELECT;
   const params = [];
   if (tenantId !== undefined) { sql += ' AND a.tenant_id = ?'; params.push(tenantId); }
   if (ownerId !== undefined) { sql += ' AND p.owner_id = ?'; params.push(ownerId); }
+  // Properties the user owns or manages.
+  if (runnerId !== undefined) { sql += ' AND (p.owner_id = ? OR p.manager_id = ?)'; params.push(runnerId, runnerId); }
   if (id !== undefined) { sql += ' AND a.id = ?'; params.push(id); }
   sql += ' ORDER BY a.approved_at DESC, a.id DESC';
   return (await db.all(sql, params)).map(tenancyFromRow);
@@ -105,23 +117,38 @@ export async function latestApprovedByUnit(db, unitIds) {
   return latest;
 }
 
-/** A tenancy is active while its unit is occupied and no later tenant was approved for that unit. */
-export const isActive = (tenancy, latest) =>
-  tenancy.unit.status === 'occupied' && latest.get(tenancy.unit_id) === tenancy.id;
+/** 'active', 'expired' (past its end date), or 'terminated'. */
+export function leaseState(lease, day = today()) {
+  if (lease.status === 'terminated') return 'terminated';
+  return lease.end_date < day ? 'expired' : 'active';
+}
 
-/** Create any missing monthly charges from the tenancy's first month up to this month. */
+/**
+ * A tenancy is active while its unit is occupied, no later tenant was approved
+ * for that unit, and its lease (if it has one) is neither terminated nor expired.
+ */
+export const isActive = (tenancy, latest, day = today()) =>
+  tenancy.unit.status === 'occupied' && latest.get(tenancy.unit_id) === tenancy.id
+  && (!tenancy.lease || leaseState(tenancy.lease, day) === 'active');
+
+/**
+ * Create any missing monthly charges from the tenancy's first month up to this
+ * month, or up to the lease's last month if it has ended.
+ */
 export async function syncCharges(db, tenancy, day = today()) {
   const start = tenancy.start;
   if (!start || start > day) return;
+  if (tenancy.lease && tenancy.lease.end_date < start) return; // ended before it began
+  const last = tenancy.lease && tenancy.lease.end_date < day ? tenancy.lease.end_date : day;
   const existing = new Set((await db.all('SELECT period FROM rent_charges WHERE tenancy_id = ?', [tenancy.id]))
     .map((r) => r.period));
   const created = nowIso();
-  for (let period = monthStart(start); period <= day; period = nextMonth(period)) {
+  for (let period = monthStart(start); period <= last; period = nextMonth(period)) {
     if (existing.has(period)) continue;
     await db.run(
       `INSERT INTO rent_charges (tenancy_id, period, amount, due_date, created_at) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT DO NOTHING`,
-      [tenancy.id, period, tenancy.unit.monthly_rent, monthEnd(period), created],
+      [tenancy.id, period, tenancy.rent, monthEnd(period), created],
     );
   }
 }
@@ -130,7 +157,8 @@ const LINE_LABELS = { paid: 'Paid', partial: 'Partly paid', due: 'Due', overdue:
 
 /** What the tenant owes: one line per month, plus totals. All amounts in centavos. */
 export async function buildLedger(db, tenancy, { active = true, day = today() } = {}) {
-  if (active) await syncCharges(db, tenancy, day);
+  // An ended lease (expired or terminated) still gets its remaining months up to its end date.
+  if (active || (tenancy.lease && leaseState(tenancy.lease, day) !== 'active')) await syncCharges(db, tenancy, day);
   const charges = await db.all('SELECT * FROM rent_charges WHERE tenancy_id = ? ORDER BY period', [tenancy.id]);
   const totals = {};
   const counts = {};
@@ -162,7 +190,7 @@ export async function buildLedger(db, tenancy, { active = true, day = today() } 
     lines.push({ charge, paid, remaining, through_total: running, state, label: LINE_LABELS[state] });
   }
 
-  const rent = tenancy.unit.monthly_rent;
+  const rent = tenancy.rent;
   const balance = Math.max(totalCharged - totalPaid, 0);
   const credit = Math.max(totalPaid - totalCharged, 0);
   const last = lines.at(-1);
@@ -198,8 +226,8 @@ export async function ledgersFor(db, tenancies, day = today()) {
   const latest = await latestApprovedByUnit(db, tenancies.map((t) => t.unit_id));
   const ledgers = [];
   for (const tenancy of tenancies) {
-    const active = isActive(tenancy, latest);
-    if (!active) {
+    const active = isActive(tenancy, latest, day);
+    if (!active && !tenancy.lease) {
       const hasRecords = await db.get(
         `SELECT 1 AS x FROM rent_charges WHERE tenancy_id = ?
          UNION ALL SELECT 1 AS x FROM payments WHERE tenancy_id = ?`,

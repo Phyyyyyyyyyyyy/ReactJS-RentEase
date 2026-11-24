@@ -9,8 +9,14 @@ import express from 'express';
 import { config } from './config.js';
 import { csrfProtection, loadUser } from './lib/auth.js';
 import { apiErrorHandler, notFound } from './lib/http.js';
-import accountsRoutes from './routes/accounts.js';
+import accountsRoutes, { DEFAULT_LIMITS } from './routes/accounts.js';
+import { defaultMailer } from './lib/mailer.js';
+import { defaultGateway } from './gcash.js';
 import adminRoutes from './routes/admin.js';
+import financesRoutes from './routes/finances.js';
+import gcashRoutes from './routes/gcash.js';
+import leasesRoutes from './routes/leases.js';
+import notificationsRoutes from './routes/notifications.js';
 import paymentsRoutes from './routes/payments.js';
 import propertiesRoutes from './routes/properties.js';
 
@@ -35,7 +41,9 @@ function contentSecurityPolicy(html) {
   ].join('; ');
 }
 
-export function createApp(db, { mediaDir = config.mediaDir, frontendDist = config.frontendDist, limits } = {}) {
+export function createApp(db, {
+  mediaDir = config.mediaDir, frontendDist = config.frontendDist, limits, mailer = defaultMailer(), appUrl = config.appUrl, gateway = defaultGateway(),
+} = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('query parser', 'simple');
@@ -57,9 +65,13 @@ export function createApp(db, { mediaDir = config.mediaDir, frontendDist = confi
     res.set('Cache-Control', 'no-store');
     next();
   });
-  api.use(accountsRoutes(db, { mediaDir, limits }));
+  api.use(accountsRoutes(db, { mediaDir, limits: { ...DEFAULT_LIMITS, ...limits }, mailer, appUrl }));
   api.use(propertiesRoutes(db));
   api.use(paymentsRoutes(db, { mediaDir }));
+  api.use(gcashRoutes(db, { gateway }));
+  api.use(leasesRoutes(db));
+  api.use(financesRoutes(db));
+  api.use(notificationsRoutes(db));
   api.use(adminRoutes(db));
   api.use(() => { throw notFound(); });
   api.use(apiErrorHandler);

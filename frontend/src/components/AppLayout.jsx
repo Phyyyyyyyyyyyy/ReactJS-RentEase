@@ -18,6 +18,21 @@ export function usePageTitle(heading, tabTitle = heading) {
   }, [heading, tabTitle, setHeading]);
 }
 
+/** Bell in the top bar with the number of unread notifications. */
+function NotificationBell({ count }) {
+  const label = count ? `Notifications (${count} unread)` : 'Notifications';
+  return (
+    <Link to="/notifications" className="icon-button relative" aria-label={label} title={label}>
+      <Icon name="bell" size={18} />
+      {count > 0 && (
+        <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 function SignOutButton({ className, compact }) {
   const { setUser } = useAuth();
   const { flash, notify } = useFlash();
@@ -107,6 +122,7 @@ export default function AppLayout() {
             <img className="topbar-mark" src={asset('brand/rentease-mark.svg')} alt="" width="28" height="28" />
             <div className="topbar-title"><span>RentEase</span><strong>{heading}</strong></div>
             <ThemeToggle className="topbar-theme-toggle" />
+            <NotificationBell count={badges.unread_notifications || 0} />
             <Link className="topbar-user" to="/profile">
               <Avatar user={user} className="avatar avatar-small" />
               <span>{user.full_name}</span>

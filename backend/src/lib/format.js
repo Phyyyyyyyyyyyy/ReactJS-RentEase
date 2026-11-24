@@ -32,6 +32,15 @@ export function addDays(date, days) {
   return d.toISOString().slice(0, 10);
 }
 
+/** Add months to a 'YYYY-MM-DD' date; the day is kept, or clamped to the month's last day (Jan 31 + 1 month = Feb 28). */
+export function addMonths(date, months) {
+  const [y, m, d] = date.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
 /** True for a real calendar date written as YYYY-MM-DD. */
 export function isValidDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

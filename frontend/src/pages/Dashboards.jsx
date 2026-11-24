@@ -51,7 +51,7 @@ export function AdminDashboard() {
             </div>
           </div>
           <QuickActions eyebrow="Quick actions" title="Administration">
-            <QuickAction to="/admin/users/new" icon="users" title="Create an account" text="Add Admin or Staff users and assign roles." />
+            <QuickAction to="/admin/users/new" icon="users" title="Create an account" text="Add Admin or Property Manager accounts and assign roles." />
             <QuickAction to="/admin/users" icon="shield" title="Roles & access" text="Change roles or deactivate accounts." />
             <QuickAction to="/profile" icon="user" title="My profile" text="Keep your own account details current." />
           </QuickActions>
@@ -61,39 +61,25 @@ export function AdminDashboard() {
   );
 }
 
-export function StaffDashboard() {
-  usePageTitle('Staff Dashboard', 'Staff dashboard');
-  return (
-    <DashboardData>{(d) => (
-      <div className="page-stack">
-        <HeroPanel eyebrow="Staff portal" text="Support owners and tenants and keep property records accurate."
-          role="Staff" scope="View-only property access" />
-        <section className="stats-grid">
-          <StatCard icon="users" label="Active tenants" value={d.tenant_count} note="registered tenants" />
-          <StatCard icon="building" label="Active owners" value={d.owner_count} note="registered property owners" />
-        </section>
-        <section className="dashboard-grid">
-          <QuickActions title="Today's work">
-            <QuickAction icon="building" title="View property records" text="Review property and unit information. Coming soon." />
-            <QuickAction icon="file" title="View applications" text="Monitor submitted rental applications. Coming soon." />
-            <QuickAction to="/profile" icon="user" title="Update profile" text="Keep your staff contact details current." />
-          </QuickActions>
-          <AccountPanel />
-        </section>
-      </div>
-    )}</DashboardData>
-  );
+export function ManagerDashboard() {
+  return <OwnerDashboard manager />;
 }
 
-export function OwnerDashboard() {
-  usePageTitle('Owner Dashboard', 'Owner dashboard');
+/** Owners and Property Managers: the properties they own or manage. */
+export function OwnerDashboard({ manager = false }) {
+  usePageTitle(manager ? 'Manager Dashboard' : 'Owner Dashboard', manager ? 'Manager dashboard' : 'Owner dashboard');
   return (
     <DashboardData>{(d) => (
       <div className="page-stack">
-        <HeroPanel eyebrow="Property owner portal" text="List your properties, manage units, and review tenant applications."
-          role="Property Owner" scope="Manage your own listings" />
+        {manager ? (
+          <HeroPanel eyebrow="Property manager portal" text="Review applications and confirm rent for the properties you manage."
+            role="Property Manager" scope="Properties assigned to you" />
+        ) : (
+          <HeroPanel eyebrow="Property owner portal" text="List your properties, manage units, and review tenant applications."
+            role="Property Owner" scope="Manage your own listings" />
+        )}
         <section className="stats-grid">
-          <StatCard icon="building" label="Properties" value={d.property_count} note="listed by you" />
+          <StatCard icon="building" label="Properties" value={d.property_count} note={manager ? 'assigned to you' : 'listed by you'} />
           <StatCard icon="home" label="Units" value={d.unit_count} note="across all properties" />
           <StatCard icon="key" label="Vacant units" value={d.vacant_units} note="open for applications" />
           <StatCard icon="clock" label="To review" value={d.app_pending} note="pending applications"
@@ -101,7 +87,8 @@ export function OwnerDashboard() {
         </section>
         <section className="dashboard-grid">
           <QuickActions title="Your workspace">
-            <QuickAction to="/owner/properties" icon="building" title="Manage my properties" text="Add properties and units, update rent and availability." />
+            <QuickAction to="/owner/properties" icon="building" title={manager ? 'Managed properties' : 'Manage my properties'}
+              text={manager ? 'See the properties and units you look after.' : 'Add properties and units, update rent and availability.'} />
             <QuickAction to="/owner/applications" icon="file" title="Review applications"
               text={d.app_pending ? `${d.app_pending} application${plural(d.app_pending)} waiting for your decision.` : 'Approve or reject tenant applications.'} />
             <QuickAction to="/owner/payments" icon="wallet" title="Rent payments"

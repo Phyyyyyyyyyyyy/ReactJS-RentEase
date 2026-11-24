@@ -85,12 +85,21 @@ export class Client {
 export async function setup(options = {}) {
   const mediaDir = mkdtempSync(path.join(tmpdir(), 'rentease-media-'));
   const db = await openDatabase({ url: '', sqlitePath: ':memory:' });
-  const server = createApp(db, { mediaDir, ...options }).listen(0, '127.0.0.1');
+  // Emails are collected here instead of being sent.
+  const emails = [];
+  const mailer = { async send(email) { emails.push(email); } };
+  const server = createApp(db, { mediaDir, mailer, appUrl: 'https://rentease.test', ...options }).listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
     db,
     mediaDir,
+    emails,
+    /** The verification token in the most recent email sent to `to`. */
+    tokenFor: (to) => {
+      const email = emails.filter((e) => e.to === to).at(-1);
+      return email && /verify-email\?token=([\w-]+)/.exec(email.text)[1];
+    },
     client: new Client(base, db),
     newClient: () => new Client(base, db),
     async close() {

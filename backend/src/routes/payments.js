@@ -12,7 +12,10 @@ import { deleteFile, fileUrl, imageType, INVALID_IMAGE, saveImage } from '../lib
 import { Form } from '../lib/forms.js';
 import { endpoint, fail, formErrors, notFound, reply } from '../lib/http.js';
 import { iso, money, nowIso, peso, today } from '../lib/format.js';
+import { leaseJson } from '../leases.js';
 import { acceptsGcash, displayName, userBrief } from '../users.js';
+import { notify, runnersOfUnit } from '../notifications.js';
+import { RUNNERS, RUNS } from './properties.js';
 
 export const PAYMENT_METHODS = [
   ['gcash', 'GCash'],
@@ -29,7 +32,6 @@ const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 const VOIDED = 'Voided by owner';
 
 const TENANT = ['tenant'];
-const OWNER = ['owner'];
 
 // ------------------------------------------------------------------ JSON shapes
 
@@ -56,6 +58,7 @@ function tenancyJson(t) {
       property: { id: t.property.id, name: t.property.name },
     },
     owner: { ...userBrief(t.owner), phone: t.owner.phone, accepts_gcash: acceptsGcash(t.owner) },
+    lease: leaseJson(t.lease),
   };
 }
 
@@ -78,7 +81,7 @@ function ledgerJson(l) {
 }
 
 const PAYMENT_SELECT = `
-  SELECT pay.*, a.tenant_id, a.unit_id, u.name AS unit_name, p.name AS property_name, p.owner_id,
+  SELECT pay.*, a.tenant_id, a.unit_id, u.name AS unit_name, p.name AS property_name, p.owner_id, p.manager_id,
     t.username AS t_username, t.first_name AS t_first_name, t.last_name AS t_last_name,
     t.profile_photo AS t_profile_photo
   FROM payments pay
@@ -196,6 +199,9 @@ export default function paymentsRoutes(db, { mediaDir }) {
         if (isUniqueViolation(error)) throw formErrors({ reference_number: ['This reference number has already been submitted.'] });
         throw error;
       }
+      await notify(db, await runnersOfUnit(db, tenancy.unit_id), 'payment',
+        `${displayName(tenancy.tenant)} sent a ${peso(amount)} GCash payment for ${tenancy.unit.name}. Check reference ${reference} and confirm it.`,
+        '/owner/payments');
       return reply(201, {
         message: `GCash payment of ${peso(amount)} submitted. It will count toward your balance once the owner confirms it.`,
       });
@@ -229,34 +235,35 @@ export default function paymentsRoutes(db, { mediaDir }) {
   // ----------------------------------------------------------------- owner
 
   endpoint(router, '/owner/payments/', {
-    roles: OWNER,
+    roles: RUNNERS,
     GET: async (req) => {
-      const ledgers = await ledgersFor(db, await tenanciesFor(db, { ownerId: req.user.id }));
+      const ledgers = await ledgersFor(db, await tenanciesFor(db, { runnerId: req.user.id }));
       ledgers.sort((a, b) => (Number(!a.active) - Number(!b.active))
         || (b.balance - a.balance)
         || a.tenancy.property.name.localeCompare(b.tenancy.property.name)
         || a.tenancy.unit.name.localeCompare(b.tenancy.unit.name));
       const pending = await db.all(
-        `${PAYMENT_SELECT} WHERE p.owner_id = ? AND pay.status = 'pending' ORDER BY pay.created_at, pay.id`,
-        [req.user.id],
+        `${PAYMENT_SELECT} WHERE ${RUNS('p')} AND pay.status = 'pending' ORDER BY pay.created_at, pay.id`,
+        [req.user.id, req.user.id],
       );
       return {
         ledgers: ledgers.map(ledgerJson),
         pending: pending.map((p) => paymentJson(p, req.user)),
         outstanding: money(ledgers.reduce((sum, l) => sum + l.balance, 0)),
-        gcash_ready: acceptsGcash(req.user),
+        // Managers don't receive rent themselves, so they never need to set up GCash.
+        gcash_ready: req.user.role === 'manager' || acceptsGcash(req.user),
       };
     },
   });
 
   async function ownerTenancy(req) {
-    const [tenancy] = await tenanciesFor(db, { ownerId: req.user.id, id: id(req) });
+    const [tenancy] = await tenanciesFor(db, { runnerId: req.user.id, id: id(req) });
     if (!tenancy) throw notFound();
     return tenancy;
   }
 
   endpoint(router, '/owner/payments/tenancy/:id/', {
-    roles: OWNER,
+    roles: RUNNERS,
     GET: async (req) => {
       const tenancy = await ownerTenancy(req);
       const history = await db.all(`${PAYMENT_SELECT} WHERE pay.tenancy_id = ? ${PAYMENT_ORDER}`, [tenancy.id]);
@@ -296,18 +303,20 @@ export default function paymentsRoutes(db, { mediaDir }) {
       let status = 'Fully paid.';
       if (after.balance) status = `${peso(after.balance)} still owed.`;
       else if (after.credit) status = `Fully paid, with ${peso(after.credit)} credit for future months.`;
+      await notify(db, tenancy.tenant_id, 'payment',
+        `A ${peso(amount)} payment for ${tenancy.property.name} ${tenancy.unit.name} was recorded. ${status}`, '/payments');
       return reply(201, { message: `Recorded ${peso(amount)} from ${displayName(tenancy.tenant)}. ${status}` });
     },
   });
 
   endpoint(router, '/owner/payments/:id/:decision/', {
-    roles: OWNER,
+    roles: RUNNERS,
     POST: async (req) => {
       const { decision } = req.params;
       // Which status a payment must have for each action.
       const allowed = { confirm: 'pending', reject: 'pending', void: 'confirmed' }[decision];
       if (!allowed) throw notFound();
-      const payment = await db.get(`${PAYMENT_SELECT} WHERE pay.id = ? AND p.owner_id = ?`, [id(req), req.user.id]);
+      const payment = await db.get(`${PAYMENT_SELECT} WHERE pay.id = ? AND ${RUNS('p')}`, [id(req), req.user.id, req.user.id]);
       if (!payment) throw notFound();
       const tenant = displayName(person(payment, 't', payment.tenant_id));
       const handled = () => fail('That payment has already been handled.');
@@ -333,6 +342,13 @@ export default function paymentsRoutes(db, { mediaDir }) {
         [status, nowIso(), ownerNote, payment.id, allowed],
       );
       if (!changes) throw handled();
+      const where = `${payment.property_name} ${payment.unit_name}`;
+      const tenantMessage = {
+        confirm: `Your ${peso(payment.amount)} GCash payment for ${where} was confirmed.`,
+        reject: `Your ${peso(payment.amount)} payment for ${where} was rejected${ownerNote ? `: ${ownerNote}` : '.'}`,
+        void: `A ${peso(payment.amount)} payment for ${where} was voided and no longer counts toward your balance.`,
+      }[decision];
+      await notify(db, payment.tenant_id, 'payment', tenantMessage, '/payments');
       return { message };
     },
   });

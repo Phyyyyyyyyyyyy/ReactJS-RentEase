@@ -28,7 +28,7 @@ export default function Register() {
       <div className="auth-copy">
         <span className="eyebrow light">Account registration</span>
         <h1>Start with the portal that matches your rental role.</h1>
-        <p>Public registration is for Tenant and Property Owner accounts. Admin and Staff accounts are created by an administrator.</p>
+        <p>Public registration is for Tenant and Property Owner accounts. Admin and Property Manager accounts are created by an administrator.</p>
       </div>
     )}>
       <form className="auth-card wide-auth-card" onSubmit={onSubmit} noValidate>

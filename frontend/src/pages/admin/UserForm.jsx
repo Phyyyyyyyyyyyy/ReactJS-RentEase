@@ -9,7 +9,7 @@ import { api } from '../../lib/api';
 import { ROLES } from '../../lib/constants';
 
 const EMPTY = {
-  first_name: '', last_name: '', username: '', email: '', phone: '', role: 'staff', password1: '', password2: '',
+  first_name: '', last_name: '', username: '', email: '', phone: '', role: 'manager', password1: '', password2: '',
 };
 
 /** /admin/users/new and /admin/users/:id/edit */
@@ -34,7 +34,7 @@ function UserForm({ account }) {
   const self = account?.id === me.id;
   const form = useForm(account
     ? { first_name: account.first_name, last_name: account.last_name, email: account.email, phone: account.phone,
-      role: account.role, is_active: account.is_active, password1: '', password2: '' }
+      role: account.role, is_active: account.is_active, email_verified: account.email_verified, password1: '', password2: '' }
     : EMPTY);
   const { bind, errors, values, setValue } = form;
 
@@ -57,7 +57,7 @@ function UserForm({ account }) {
         <div>
           <span className="eyebrow">Users & Access</span>
           <h1>{account ? `Edit ${account.full_name}` : 'Add an account'}</h1>
-          <p>{account ? `@${account.username}` : 'Create an account with any role, including Admin and Staff.'}</p>
+          <p>{account ? `@${account.username}` : 'Create an account with any role, including Admin and Property Manager.'}</p>
         </div>
       </div>
       <section className="panel">
@@ -75,7 +75,7 @@ function UserForm({ account }) {
             <Field label="Contact number" optional={Boolean(account)} error={errors.phone}><input {...bind('phone')} type="tel" maxLength={20} /></Field>
           </div>
           <Field label="Role" error={errors.role}
-            help={self ? 'You can’t remove your own Admin role.' : 'Admins manage accounts; Staff have view-only access.'}>
+            help={self ? 'You can’t remove your own Admin role.' : 'Admins manage accounts; Property Managers run the properties owners assign to them.'}>
             <select {...bind('role')} disabled={self}>
               {ROLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -86,6 +86,15 @@ function UserForm({ account }) {
                 <input type="checkbox" className="!w-auto" checked={Boolean(values.is_active)} disabled={self}
                   onChange={(e) => setValue('is_active', e.target.checked)} />
                 Active: can sign in. Deactivating signs the person out.
+              </span>
+            </Field>
+          )}
+          {account && (
+            <Field label="Email verification" error={errors.email_verified}>
+              <span className="inline-flex items-center gap-2 text-sm font-normal text-slate-700">
+                <input type="checkbox" className="!w-auto" checked={Boolean(values.email_verified)} disabled={self && account.email_verified}
+                  onChange={(e) => setValue('email_verified', e.target.checked)} />
+                Email verified: tick this if the person can't get the verification email.
               </span>
             </Field>
           )}
