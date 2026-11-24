@@ -29,6 +29,10 @@ export const config = {
   // Set COOKIE_SECURE=true when the site is served over HTTPS.
   secureCookies: ['1', 'true', 'yes'].includes(String(process.env.COOKIE_SECURE).toLowerCase()),
 
+  // When deployed behind a proxy (e.g. a hosting platform), set TRUST_PROXY=1 so
+  // sign-in limits count each visitor's real address instead of the proxy's.
+  trustProxy: Number(process.env.TRUST_PROXY) || 0,
+
   mediaDir: process.env.MEDIA_DIR || path.join(BACKEND_DIR, 'media'),
   frontendDist: path.resolve(BACKEND_DIR, '..', 'frontend', 'dist'),
 };

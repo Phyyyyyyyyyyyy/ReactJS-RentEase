@@ -68,7 +68,7 @@ cd backend
 npm test
 ```
 
-106 tests cover registration, sign-in (including CSRF), role access, browsing and applying, owner property/unit/application management, rent billing, GCash/in-person payments, uploads, and user management.
+124 tests cover registration, sign-in (including CSRF), role access, browsing and applying, owner property/unit/application management, rent billing, GCash/in-person payments, uploads, and user management. [`test/security.test.js`](backend/test/security.test.js) tries 14 common attacks on the app (admin pages, changing IDs in URLs, negative amounts, faked payments, double-submits, password guessing, script injection, fake uploads, SQL injection, and more) and checks that each one fails.
 
 ## Features
 
@@ -99,6 +99,9 @@ Once approved, the tenant is billed the unit's rent every month while the unit i
 - Every API query is filtered by the signed-in user, so other people's records return 404.
 - Role checks on every endpoint (401 when signed out, 403 for the wrong role).
 - CSRF is checked on every request that changes data, including sign-in and registration.
+- Sign-in is cut off for 15 minutes after 10 wrong passwords for an account (or 50 from one address), and one address can create at most 10 accounts an hour. When deployed behind a proxy, set `TRUST_PROXY=1`.
+- Money amounts must be positive, so negative amounts and "-1 items" tricks are refused. Requests sent at the same moment (double-submits) can only succeed once.
+- The built React page sends a Content-Security-Policy, so the browser only runs the site's own scripts.
 - Session tokens are stored only as SHA-256 hashes, and uploads must be real images (checked from the file contents).
 - On Supabase, Row Level Security is enabled on all tables at startup so the public Data API can't read them.
 

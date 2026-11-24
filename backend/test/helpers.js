@@ -82,10 +82,10 @@ export class Client {
 }
 
 /** Start a server on a fresh database. Call `await env.close()` when done. */
-export async function setup() {
+export async function setup(options = {}) {
   const mediaDir = mkdtempSync(path.join(tmpdir(), 'rentease-media-'));
   const db = await openDatabase({ url: '', sqlitePath: ':memory:' });
-  const server = createApp(db, { mediaDir }).listen(0, '127.0.0.1');
+  const server = createApp(db, { mediaDir, ...options }).listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   return {

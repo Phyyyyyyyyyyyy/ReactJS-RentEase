@@ -7,6 +7,8 @@ import { Form } from '../lib/forms.js';
 import { endpoint, fail, formErrors, reply } from '../lib/http.js';
 import { iso, money, nowIso } from '../lib/format.js';
 import { checkPassword, hashPassword, passwordProblems } from '../lib/passwords.js';
+import { minutes, RateLimiter } from '../lib/rateLimit.js';
+import { isUniqueViolation } from '../db.js';
 import {
   emailTaken, findUser, GCASH_NUMBER_RE, ROLES, SELF_REGISTER_ROLES, userBrief, userJson,
   usernameTaken,
@@ -59,7 +61,13 @@ export function validateNewPassword(form, user, { required = true } = {}) {
   return password2;
 }
 
-export default function accountsRoutes(db, { mediaDir }) {
+export const DEFAULT_LIMITS = {
+  loginPerAccount: { limit: 10, windowMs: 15 * 60_000 },
+  loginPerAddress: { limit: 50, windowMs: 15 * 60_000 },
+  signupPerAddress: { limit: 10, windowMs: 60 * 60_000 },
+};
+
+export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }) {
   const router = Router();
 
   endpoint(router, '/auth/session/', {
@@ -71,6 +79,13 @@ export default function accountsRoutes(db, { mediaDir }) {
     },
   });
 
+  // Stop password guessing: after too many wrong passwords for one account, or
+  // from one network address, sign-in is refused for a while (HTTP 429).
+  const failedLoginsPerAccount = new RateLimiter(limits.loginPerAccount);
+  const failedLoginsPerAddress = new RateLimiter(limits.loginPerAddress);
+  // Stop mass sign-ups from one address.
+  const signupsPerAddress = new RateLimiter(limits.signupPerAddress);
+
   endpoint(router, '/auth/login/', {
     public: true,
     POST: async (req, res) => {
@@ -80,6 +95,13 @@ export default function accountsRoutes(db, { mediaDir }) {
       form.check();
       const lookup = username.includes('@') ? 'email' : 'username';
       const user = await db.get(`SELECT * FROM users WHERE LOWER(${lookup}) = LOWER(?)`, [username]);
+      // Count by account id, so switching between username and email doesn't reset the count.
+      const accountKey = user ? `user:${user.id}` : `name:${username.toLowerCase()}`;
+      const wait = Math.max(failedLoginsPerAccount.retryAfter(accountKey), failedLoginsPerAddress.retryAfter(req.ip));
+      if (wait) {
+        res.set('Retry-After', String(wait));
+        throw fail(`Too many failed sign-in attempts. Please wait ${minutes(wait)} and try again.`, 429);
+      }
       let ok = false;
       if (user) {
         ok = await checkPassword(password, user.password);
@@ -88,9 +110,12 @@ export default function accountsRoutes(db, { mediaDir }) {
         await checkPassword(password, dummyHash);
       }
       if (!ok || !user.is_active) {
+        failedLoginsPerAccount.hit(accountKey);
+        failedLoginsPerAddress.hit(req.ip);
         const message = 'Invalid username/email or password. Please try again.';
         throw formErrors({ non_field_errors: [message] }, message);
       }
+      failedLoginsPerAccount.reset(accountKey);
       await signIn(db, req, res, user);
       const fresh = await findUser(db, user.id);
       return { user: userJson(fresh), message: `Welcome back, ${user.first_name || user.username}!` };
@@ -107,17 +132,29 @@ export default function accountsRoutes(db, { mediaDir }) {
 
   endpoint(router, '/auth/register/', {
     public: true,
-    POST: async (req) => {
+    POST: async (req, res) => {
       if (req.user) throw fail('You are already signed in.');
+      const wait = signupsPerAddress.retryAfter(req.ip);
+      if (wait) {
+        res.set('Retry-After', String(wait));
+        throw fail(`Too many new accounts from this network. Please wait ${minutes(wait)} and try again.`, 429);
+      }
       const form = new Form(req.body);
       const values = await validateNewAccount(db, form, SELF_REGISTER_ROLES);
       form.check();
-      await db.insert(
-        `INSERT INTO users (username, email, password, first_name, last_name, role, phone, date_joined)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [values.username, values.email, await hashPassword(values.password), values.first_name, values.last_name,
-          values.role, values.phone, nowIso()],
-      );
+      try {
+        await db.insert(
+          `INSERT INTO users (username, email, password, first_name, last_name, role, phone, date_joined)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [values.username, values.email, await hashPassword(values.password), values.first_name, values.last_name,
+            values.role, values.phone, nowIso()],
+        );
+      } catch (error) {
+        // The same username or email registered at the same moment by another request.
+        if (isUniqueViolation(error)) throw formErrors({ username: ['This username or email is already taken.'] });
+        throw error;
+      }
+      signupsPerAddress.hit(req.ip);
       return reply(201, { message: 'Account created successfully. You can now sign in.' });
     },
   });
