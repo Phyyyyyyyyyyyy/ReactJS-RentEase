@@ -108,10 +108,47 @@ class SqliteDatabase {
   }
 }
 
+/** Remove spaces, line breaks, and quotes that often sneak in when pasting a URL. */
+export function cleanDatabaseUrl(url) {
+  return String(url || '').trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
+}
+
+/**
+ * Explain a broken DATABASE_URL clearly, without printing it (it contains the password).
+ */
+export function checkDatabaseUrl(url) {
+  const problem = (reason) => new Error(
+    `DATABASE_URL is not a valid PostgreSQL connection string: ${reason}\n`
+    + 'Copy it from Supabase (Connect > Session pooler) and put your database password in place of [YOUR-PASSWORD], '
+    + 'without the square brackets.',
+  );
+  if (!/^postgres(ql)?:\/\//.test(url)) throw problem('it must start with postgresql://');
+  if (/\[YOUR-PASSWORD\]/i.test(url)) throw problem('it still contains [YOUR-PASSWORD].');
+  const specialCharacters = problem('it could not be read. If your password contains @ # / ? : % or spaces, '
+    + 'reset it in Supabase to letters and numbers only, or replace those characters with %40 %23 %2F %3F %3A %25 %20.');
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw specialCharacters;
+  }
+  // A # or ? in the password cuts the URL short; a / moves the host into the path.
+  if (parsed.hash || !/^\/[^/]*$/.test(parsed.pathname) || !parsed.port) throw specialCharacters;
+  if (!parsed.password) throw problem('it has no password.');
+  if (/^\[.*\]$/.test(decodeURIComponent(parsed.password))) throw problem('remove the square brackets around your password.');
+  if (!parsed.hostname) throw problem('it has no host name.');
+  if (/^db\.[a-z0-9]+\.supabase\.co$/i.test(parsed.hostname)) {
+    throw problem('this is Supabase\'s "Direct connection" (db.<project>.supabase.co), which only works over IPv6, '
+      + 'and hosts like Render can\'t reach it. In Supabase click Connect and choose Method: Session pooler '
+      + '(the host ends in pooler.supabase.com).');
+  }
+}
+
 class PostgresDatabase {
   dialect = 'postgres';
 
   static async connect(url) {
+    checkDatabaseUrl(url);
     const { default: pg } = await import('pg');
     // COUNT() and SUM() come back as strings by default; the numbers here fit in a JS number.
     pg.types.setTypeParser(20, Number); // bigint
@@ -174,6 +211,7 @@ class PostgresDatabase {
 
 /** Open the database (PostgreSQL if a URL is given, else SQLite) and create any missing tables. */
 export async function openDatabase({ url = config.databaseUrl, sqlitePath = config.sqlitePath } = {}) {
+  url = cleanDatabaseUrl(url);
   const db = url ? await PostgresDatabase.connect(url) : new SqliteDatabase(sqlitePath);
   await db.migrate();
   return db;

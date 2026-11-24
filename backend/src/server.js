@@ -4,7 +4,13 @@ import { config } from './config.js';
 import { openDatabase } from './db.js';
 import { DEMO_PASSWORD, seedProperties, seedUsers } from './seed.js';
 
-const db = await openDatabase();
+let db;
+try {
+  db = await openDatabase();
+} catch (error) {
+  console.error(`Could not open the database. ${error.message}`);
+  process.exit(1);
+}
 
 if (config.seedDemoData) {
   const password = process.env.DEMO_PASSWORD || DEMO_PASSWORD;
