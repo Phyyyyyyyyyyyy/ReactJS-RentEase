@@ -8,7 +8,7 @@ import { useForm } from '../hooks/useForm';
 import { api, toFormData } from '../lib/api';
 import { ProfileCard } from './Profile';
 
-/** Current file plus "Clear" checkbox, like Django's ClearableFileInput. */
+/** Current file plus a "Clear" checkbox (sent as `<name>-clear`). */
 function FileField({ label, current, name, form, help, accept = 'image/*' }) {
   return (
     <Field label={label} optional help={help} error={form.errors[name]}>

@@ -2,80 +2,84 @@
 
 RentEase connects **property owners**, **tenants**, **staff**, and **administrators** in one web app. Owners list properties and units, tenants find and apply for rentals, owners approve applications, and rent is billed monthly and paid through GCash or in person.
 
-This is the React version of the original Django app. The pages are now a **React single-page app**; Django stays as the **JSON API** behind it, so the data model, validation rules, and rent billing are the same.
+The whole project is JavaScript: a **React single-page app** in `frontend/` talks to a **Node.js + Express JSON API** in `backend/`. (It started as a Django app; the API keeps the same endpoints, validation rules, and rent billing.)
 
 | Layer | Technology |
 |---|---|
 | Frontend | **React 19** + **React Router**, built with **Vite** (`frontend/`) |
 | Styling | **Tailwind CSS v4** plus the original RentEase stylesheet, light and dark theme |
-| Backend | **Django 6** + **Django REST Framework**, JSON API under `/api/` (`backend/`) |
-| Database | **PostgreSQL** on **Supabase** (or local SQLite when `DATABASE_URL` is not set) |
-| Authentication | Django sessions (cookie) with CSRF protection; hashed passwords |
+| Backend | **Node.js** + **Express 5**, JSON API under `/api/` (`backend/`) |
+| Database | Local **SQLite** file (built into Node), or **PostgreSQL** on **Supabase** when `DATABASE_URL` is set |
+| Authentication | Session cookie with CSRF protection; passwords hashed with PBKDF2-SHA256 |
 
 ## Project layout
 
 ```
-backend/            Django project: the API, models, billing, and Django admin
-  accounts/         users and roles, sign in/out, register, profile, dashboards (api.py)
-  properties/       properties, units, applications (api.py)
-  payments/         monthly rent charges, GCash and in-person payments (api.py, billing.py)
-  config/           settings, URL routes (api_urls.py lists every endpoint)
+backend/            Node.js API (Express)
+  src/routes/       accounts.js, properties.js, payments.js, admin.js: every /api endpoint
+  src/billing.js    monthly rent charges and balances
+  src/schema.js     database tables
+  src/lib/          sessions + CSRF, form validation, passwords, uploads
+  scripts/          seed.js (demo data), create-admin.js
+  test/             API tests (node --test)
 frontend/           React app
-  src/pages/        one component per page (auth, dashboards, tenant/, owner/)
+  src/pages/        one component per page (auth, dashboards, tenant/, owner/, admin/)
   src/components/   layout, sidebar, form fields, badges, tables
   src/lib/api.js    fetch wrapper (sends the CSRF token)
 ```
 
 ## Running it locally
 
-You need **Python 3.12+** and **Node 20+**.
+You need **Node.js 22.13 or newer** (nothing else: the database is built in).
 
-**Quick start (Windows):** copy `backend/.env.example` to `backend/.env`, fill it in, then double-click `run.bat`. It installs everything the first time, starts both servers, and opens http://localhost:5173/.
+**Quick start (Windows):** double-click `run.bat`. It installs everything the first time, starts both servers, and opens http://localhost:5173/.
 
 **Manually:**
 
 ```bash
 # 1. Backend (terminal 1)
 cd backend
-python -m venv venv
-venv\Scripts\activate            # macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt
-copy .env.example .env           # then edit .env (macOS/Linux: cp)
-python manage.py migrate
-python manage.py seed_demo_users          # optional demo accounts
-python manage.py seed_demo_properties     # optional demo listings
-python manage.py runserver                # http://127.0.0.1:8000
+npm install
+npm run seed          # optional: demo accounts and sample properties
+npm start             # http://127.0.0.1:8000  (npm run dev restarts on code changes)
 
 # 2. Frontend (terminal 2)
 cd frontend
 npm install
-npm run dev                               # http://localhost:5173
+npm run dev           # http://localhost:5173
 ```
 
-Open **http://localhost:5173/**. The Vite dev server forwards `/api`, `/media`, and `/django-admin` to Django, so the browser sees one site and the session cookie just works.
+Open **http://localhost:5173/**. The Vite dev server forwards `/api` and `/media` to the API, so the browser sees one site and the session cookie just works.
 
-Demo accounts (after `seed_demo_users`): `admin`, `owner`, `tenant`, `staff`, all with password `RentEase@2026`.
+Demo accounts (after `npm run seed`): `admin`, `owner`, `tenant`, `staff`, all with password `RentEase@2026`. To create your own admin instead, run `npm run create-admin` in `backend/`.
+
+### Settings
+
+Settings are optional. To change them, copy `backend/.env.example` to `backend/.env`. Without `DATABASE_URL`, data is kept in `backend/rentease.sqlite3`. With a Supabase `DATABASE_URL`, the tables are created on first start, and Row Level Security is switched on for them so Supabase's public Data API can't read them.
 
 ### One server instead of two
 
-`npm run build` in `frontend/` writes the app to `frontend/dist/`. Restart Django and it serves the React app itself at http://127.0.0.1:8000/ (any page URL returns the app; its files are served under `/static/`).
+`npm run build` in `frontend/` writes the app to `frontend/dist/`. Then `npm start` in `backend/` serves the React app itself at http://127.0.0.1:8000/ (any page URL returns the app).
 
 ### Tests
 
 ```bash
 cd backend
-python manage.py test
+npm test
 ```
 
-92 tests cover registration, sign-in (including CSRF), role access, browsing and applying, owner property/unit/application management, rent billing, and GCash/in-person payments.
+106 tests cover registration, sign-in (including CSRF), role access, browsing and applying, owner property/unit/application management, rent billing, GCash/in-person payments, uploads, and user management.
 
 ## Features
 
 ### Accounts
-- **Register** as a Tenant or Property Owner (Admin and Staff accounts are created in the Django admin). All fields required, unique username and email, Django password rules, passwords stored as PBKDF2 hashes.
+- **Register** as a Tenant or Property Owner (Admin and Staff accounts are created by an admin). All fields required, unique username and email, password rules (length, common passwords, all-numeric, too similar to your name), passwords stored as PBKDF2 hashes.
 - **Sign in** with username or email. **Sign out** from the sidebar or top bar.
 - **Role-based dashboards**: each role sees its own dashboard and sidebar. Opening another role's page sends you back to your own dashboard with an error message. Signed-out visitors go to the login page and come back after signing in.
 - **Profile**: view and edit your name, email, contact number, and photo. Owners also set their GCash number, account name, and QR code.
+
+### Admins
+- **Users & Access**: search and filter all accounts, create accounts with any role, change roles, reset passwords, and deactivate accounts (which signs the person out). Admins can't remove their own Admin role or deactivate themselves.
 
 ### Tenants
 - **Browse** properties that have a vacant unit; search by name, address, or city and filter by type and maximum rent.
@@ -95,8 +99,9 @@ Once approved, the tenant is billed the unit's rent every month while the unit i
 - Every API query is filtered by the signed-in user, so other people's records return 404.
 - Role checks on every endpoint (401 when signed out, 403 for the wrong role).
 - CSRF is checked on every request that changes data, including sign-in and registration.
-- On Supabase, Row Level Security is enabled on all tables after each `migrate` so the public Data API can't read them.
+- Session tokens are stored only as SHA-256 hashes, and uploads must be real images (checked from the file contents).
+- On Supabase, Row Level Security is enabled on all tables at startup so the public Data API can't read them.
 
 ## API overview
 
-All endpoints are under `/api/` and listed in [`backend/config/api_urls.py`](backend/config/api_urls.py). Errors from form validation come back as `400 {"message": "...", "errors": {"field": ["..."]}}`.
+All endpoints are under `/api/`, in [`backend/src/routes/`](backend/src/routes/). Errors from form validation come back as `400 {"message": "...", "errors": {"field": ["..."]}}`.

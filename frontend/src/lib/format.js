@@ -1,4 +1,4 @@
-/** Formatting helpers that match the Django template filters the app used before. */
+/** Formatting helpers for dates and money from the API. */
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
   'October', 'November', 'December'];
@@ -19,7 +19,7 @@ function dateParts(value) {
 }
 
 /**
- * Format a date with Django-style tokens: F (January), M (Jan), j (5), Y (2026),
+ * Format a date with PHP-style tokens: F (January), M (Jan), j (5), Y (2026),
  * g (3), i (07), A (PM). Example: formatDate('2026-11-24', 'M j, Y') -> "Nov 24, 2026".
  */
 export function formatDate(value, format) {

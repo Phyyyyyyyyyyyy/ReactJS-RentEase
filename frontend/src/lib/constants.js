@@ -1,4 +1,4 @@
-/** Choices that mirror the Django models (models.py in each backend app). */
+/** Choices that mirror the backend (backend/src/routes/*.js and backend/src/users.js). */
 
 export const PROPERTY_TYPES = [
   ['apartment', 'Apartment'],
@@ -21,6 +21,13 @@ export const PAYMENT_METHODS = [
   ['other', 'Other'],
 ];
 
+export const ROLES = [
+  ['admin', 'Admin'],
+  ['owner', 'Property Owner'],
+  ['tenant', 'Tenant'],
+  ['staff', 'Staff'],
+];
+
 // Roles a visitor may pick on the public registration form.
 export const SELF_REGISTER_ROLES = [
   ['tenant', 'Tenant'],
@@ -31,7 +38,7 @@ export const SELF_REGISTER_ROLES = [
 export const ROLE_MENUS = {
   admin: [
     { to: '/dashboard/admin', label: 'Dashboard', icon: 'home' },
-    { href: '/django-admin/', label: 'Users & Access', icon: 'users' },
+    { to: '/admin/users', label: 'Users & Access', icon: 'users' },
     { to: null, label: 'Properties & Units', icon: 'building' },
     { to: null, label: 'Applications', icon: 'file' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
@@ -58,7 +65,7 @@ export const ROLE_MENUS = {
   ],
 };
 
-/** Public files (frontend/public) work both in dev (/) and in the Django-served build (/static/). */
+/** URL of a public file (frontend/public), e.g. asset('brand/favicon.svg'). */
 export function asset(path) {
   return `${import.meta.env.BASE_URL}${path}`;
 }

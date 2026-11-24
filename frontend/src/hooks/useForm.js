@@ -4,7 +4,7 @@ import { useFlash } from '../context/FlashContext';
 /**
  * Form state with server-side validation.
  *
- * The Django API validates with the same Django forms as before and answers 400
+ * The API validates every form on the server and answers 400
  * with { message, errors: { field: [..], non_field_errors: [..] } }. Field errors
  * show under each field; "Please fix the errors below." shows at the top.
  */

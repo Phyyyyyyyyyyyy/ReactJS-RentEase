@@ -23,7 +23,7 @@ function WrongRole({ to }) {
 /**
  * Only signed-in users (and, with `roles`, only those roles) see `children`.
  * Signed-out visitors go to the login page and come back afterwards; users with
- * the wrong role go back to their own dashboard, like the Django version did.
+ * the wrong role go back to their own dashboard.
  */
 export function RequireAuth({ roles, children }) {
   const { user } = useAuth();

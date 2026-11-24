@@ -4,7 +4,7 @@ import { useLocation } from 'react-router';
 const FlashContext = createContext(null);
 
 /**
- * Success / error messages shown at the top of the page (like Django's messages).
+ * Success / error messages shown at the top of the page.
  *
  *  - flash(type, text): for the page you are about to navigate to. It survives
  *    exactly one navigation.

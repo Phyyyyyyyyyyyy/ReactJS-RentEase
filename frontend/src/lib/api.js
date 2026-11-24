@@ -1,7 +1,7 @@
 /**
- * Small fetch wrapper for the Django API at /api.
+ * Small fetch wrapper for the RentEase API at /api (backend/, Node.js + Express).
  *
- * Sign-in uses Django's session cookie. Django also sets a `csrftoken` cookie
+ * Sign-in uses a session cookie. The server also sets a `csrftoken` cookie
  * (GET /api/auth/session/), which is sent back in the X-CSRFToken header on
  * every request that changes data.
  */

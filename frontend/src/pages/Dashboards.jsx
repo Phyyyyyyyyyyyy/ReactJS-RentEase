@@ -31,7 +31,7 @@ export function AdminDashboard() {
           <div className="panel">
             <div className="panel-heading">
               <div><span className="eyebrow">Newest accounts</span><h2>Recent registrations</h2></div>
-              <a className="secondary-button compact" href="/django-admin/accounts/user/">Manage users</a>
+              <Link className="secondary-button compact" to="/admin/users">Manage users</Link>
             </div>
             <div className="table-wrap">
               <table className="compact-table">
@@ -51,8 +51,8 @@ export function AdminDashboard() {
             </div>
           </div>
           <QuickActions eyebrow="Quick actions" title="Administration">
-            <QuickAction href="/django-admin/accounts/user/add/" icon="users" title="Create an account" text="Add Admin or Staff users and assign roles." />
-            <QuickAction href="/django-admin/accounts/user/" icon="shield" title="Roles & access" text="Change roles or deactivate accounts." />
+            <QuickAction to="/admin/users/new" icon="users" title="Create an account" text="Add Admin or Staff users and assign roles." />
+            <QuickAction to="/admin/users" icon="shield" title="Roles & access" text="Change roles or deactivate accounts." />
             <QuickAction to="/profile" icon="user" title="My profile" text="Keep your own account details current." />
           </QuickActions>
         </section>
