@@ -1,0 +1,14 @@
+{
+  "name": "rentease",
+  "private": true,
+  "version": "2.0.0",
+  "description": "RentEase: React frontend (frontend/) + Node.js API (backend/). These scripts build and run both as one site, e.g. on Render.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "npm ci --prefix backend --omit=dev && npm ci --prefix frontend --include=dev && npm run build --prefix frontend",
+    "start": "npm start --prefix backend",
+    "test": "npm test --prefix backend"
+  }
+}

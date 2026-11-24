@@ -61,6 +61,25 @@ Settings are optional. To change them, copy `backend/.env.example` to `backend/.
 
 `npm run build` in `frontend/` writes the app to `frontend/dist/`. Then `npm start` in `backend/` serves the React app itself at http://127.0.0.1:8000/ (any page URL returns the app).
 
+### Deploying on Render
+
+Create a **Web Service** from this repository with these settings:
+
+| Setting | Value |
+|---|---|
+| Root Directory | *(leave empty)* |
+| Build Command | `npm run build` |
+| Start Command | `npm start` |
+
+The build installs both apps and builds the React app; the API then serves it at your `onrender.com` address. On Render the server listens on all interfaces, trusts Render's HTTPS proxy, and marks cookies Secure by itself.
+
+Environment variables:
+
+- `DATABASE_URL` (strongly recommended): a Supabase/Postgres connection string. **Without it, data lives in a SQLite file that Render erases on every deploy and restart.** Uploaded photos are also erased unless you add a Render Disk.
+- `SEED_DEMO_DATA=true` (optional): create the demo accounts and properties on startup (Render's free plan has no shell for `npm run seed`). Also set `DEMO_PASSWORD` to something private, or anyone who reads this README can sign in as `admin`.
+
+To try the Render build locally, stop the dev servers first: on Windows, `npm ci` can't replace `node_modules` while they're running.
+
 ### Tests
 
 ```bash

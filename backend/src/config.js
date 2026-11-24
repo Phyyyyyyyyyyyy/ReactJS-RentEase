@@ -16,8 +16,17 @@ function list(value, fallback) {
   return (value ?? fallback).split(',').map((s) => s.trim()).filter(Boolean);
 }
 
+function flag(value, fallback = false) {
+  if (value === undefined || value === '') return fallback;
+  return ['1', 'true', 'yes'].includes(String(value).toLowerCase());
+}
+
+// Render sets RENDER=true. There the app sits behind Render's HTTPS proxy and
+// must listen on every network interface, so those settings switch on by themselves.
+export const ON_RENDER = flag(process.env.RENDER);
+
 export const config = {
-  host: process.env.HOST || '127.0.0.1',
+  host: process.env.HOST || (ON_RENDER ? '0.0.0.0' : '127.0.0.1'),
   port: Number(process.env.PORT) || 8000,
 
   // PostgreSQL (Supabase) when DATABASE_URL is set, otherwise a local SQLite file.
@@ -26,12 +35,16 @@ export const config = {
 
   // Sites allowed to send requests that change data (the Vite dev server).
   trustedOrigins: list(process.env.CSRF_TRUSTED_ORIGINS, 'http://localhost:5173,http://127.0.0.1:5173'),
-  // Set COOKIE_SECURE=true when the site is served over HTTPS.
-  secureCookies: ['1', 'true', 'yes'].includes(String(process.env.COOKIE_SECURE).toLowerCase()),
+  // Set COOKIE_SECURE=true when the site is served over HTTPS (on by default on Render).
+  secureCookies: flag(process.env.COOKIE_SECURE, ON_RENDER),
 
   // When deployed behind a proxy (e.g. a hosting platform), set TRUST_PROXY=1 so
-  // sign-in limits count each visitor's real address instead of the proxy's.
-  trustProxy: Number(process.env.TRUST_PROXY) || 0,
+  // sign-in limits count each visitor's real address instead of the proxy's (1 by default on Render).
+  trustProxy: Number(process.env.TRUST_PROXY ?? (ON_RENDER ? 1 : 0)) || 0,
+
+  // Create the demo accounts and properties on startup if they don't exist yet
+  // (useful where there's no shell to run `npm run seed`, like Render's free plan).
+  seedDemoData: flag(process.env.SEED_DEMO_DATA),
 
   mediaDir: process.env.MEDIA_DIR || path.join(BACKEND_DIR, 'media'),
   frontendDist: path.resolve(BACKEND_DIR, '..', 'frontend', 'dist'),

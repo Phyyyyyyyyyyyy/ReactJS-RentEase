@@ -2,8 +2,20 @@
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { openDatabase } from './db.js';
+import { DEMO_PASSWORD, seedProperties, seedUsers } from './seed.js';
 
 const db = await openDatabase();
+
+if (config.seedDemoData) {
+  const password = process.env.DEMO_PASSWORD || DEMO_PASSWORD;
+  if (password === DEMO_PASSWORD) {
+    console.warn('WARNING: demo accounts use the public demo password. Set DEMO_PASSWORD to keep them private.');
+  }
+  console.log('Creating demo data (SEED_DEMO_DATA=true):');
+  await seedUsers(db, password);
+  await seedProperties(db, password);
+}
+
 const app = createApp(db);
 
 const server = app.listen(config.port, config.host, () => {

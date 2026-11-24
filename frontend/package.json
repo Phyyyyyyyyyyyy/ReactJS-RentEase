@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "RentEase React frontend (Vite + React Router + Tailwind CSS). Talks to the Django API in ../backend.",
+  "description": "RentEase React frontend (Vite + React Router + Tailwind CSS). Talks to the Node.js API in ../backend.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
