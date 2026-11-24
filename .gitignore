@@ -1,0 +1,23 @@
+# Secrets (only .env.example, with placeholders, is committed)
+.env
+.env.*
+!.env.example
+
+# Python / Django
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+db.sqlite3
+backend/media/
+backend/staticfiles/
+
+# Node / Vite
+node_modules/
+frontend/dist/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

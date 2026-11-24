@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg">
+  <script>
+    /*
+     * Light/dark theme. Runs before the stylesheet so the page never flashes the
+     * wrong theme. The choice ("light", "dark", or nothing = follow the device) is
+     * kept in localStorage; with no choice it tracks the OS setting live.
+     * The React <ThemeToggle> calls window.rentEaseTheme.set().
+     */
+    (function () {
+      var KEY = 'rentease-theme', root = document.documentElement;
+      var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+      var listeners = [];
+      function pref() {
+        try { var v = localStorage.getItem(KEY); return v === 'light' || v === 'dark' ? v : 'system'; }
+        catch (e) { return 'system'; }
+      }
+      function apply() {
+        var p = pref(), theme = p === 'system' ? (mq && mq.matches ? 'dark' : 'light') : p;
+        root.setAttribute('data-theme', theme);
+        root.setAttribute('data-theme-pref', p);
+        var meta = document.querySelector('meta[name=theme-color]');
+        if (meta) meta.content = theme === 'dark' ? '#0b1220' : '#2563eb';
+        listeners.forEach(function (fn) { fn(p); });
+      }
+      window.rentEaseTheme = {
+        get: pref,
+        set: function (p) {
+          try { if (p === 'system') localStorage.removeItem(KEY); else localStorage.setItem(KEY, p); } catch (e) {}
+          apply();
+        },
+        subscribe: function (fn) {
+          listeners.push(fn);
+          return function () { listeners = listeners.filter(function (l) { return l !== fn; }); };
+        }
+      };
+      apply();
+      if (mq) { if (mq.addEventListener) mq.addEventListener('change', apply); else mq.addListener(apply); }
+      // Keep other open tabs in sync.
+      window.addEventListener('storage', function (e) { if (e.key === KEY) apply(); });
+    })();
+  </script>
+  <title>RentEase</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
