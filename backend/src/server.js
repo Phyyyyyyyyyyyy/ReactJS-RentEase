@@ -38,7 +38,7 @@ if (verifiedSenderService) {
 } else if (config.resendApiKey) {
   console.log('Emails are sent with Resend.');
 } else {
-  console.warn('Note: no email service is set up (BREVO_API_KEY or RESEND_API_KEY), so verification emails are printed in this log instead of sent.');
+  console.warn('Note: no email service is set up (MAILJET_API_KEY + MAILJET_SECRET_KEY, BREVO_API_KEY, or RESEND_API_KEY), so verification emails are printed in this log instead of sent.');
 }
 
 const server = app.listen(config.port, config.host, () => {
