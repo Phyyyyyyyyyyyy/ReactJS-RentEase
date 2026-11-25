@@ -88,6 +88,7 @@ The build installs both apps and builds the React app; the API then serves it at
 Environment variables:
 
 - `DATABASE_URL` (strongly recommended): a Supabase/Postgres connection string. **Without it, data lives in a SQLite file that Render erases on every deploy and restart.** Uploaded photos are also erased unless you add a Render Disk.
+- `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (recommended): on every start, creates that admin account if it's missing, or sets its password if it exists (so it also recovers a locked-out admin). The password must pass the normal password rules; the log says what happened.
 - `SEED_DEMO_DATA=true` (optional): create the demo accounts and properties on startup (Render's free plan has no shell for `npm run seed`). Also set `DEMO_PASSWORD` to something private, or anyone who reads this README can sign in as `admin`.
 
 To try the Render build locally, stop the dev servers first: on Windows, `npm ci` can't replace `node_modules` while they're running.

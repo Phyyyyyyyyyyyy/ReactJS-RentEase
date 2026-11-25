@@ -2,6 +2,7 @@
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { openDatabase } from './db.js';
+import { ensureAdmin } from './bootstrap.js';
 import { backfillLeases } from './leases.js';
 import { DEMO_PASSWORD, seedProperties, seedUsers } from './seed.js';
 
@@ -26,6 +27,12 @@ if (config.seedDemoData) {
   await seedUsers(db, password);
   await seedProperties(db, password);
 }
+
+// ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD: make sure that admin account exists.
+const adminStatus = await ensureAdmin(db, {
+  username: process.env.ADMIN_USERNAME, email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD,
+});
+if (adminStatus) console.log(adminStatus);
 
 const app = createApp(db);
 
