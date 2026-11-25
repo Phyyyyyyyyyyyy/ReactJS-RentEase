@@ -28,8 +28,17 @@ if (config.seedDemoData) {
 }
 
 const app = createApp(db);
-if (!config.resendApiKey) {
-  console.warn('Note: RESEND_API_KEY is not set, so verification emails are printed in this log instead of sent.');
+const verifiedSenderService = (config.mailjetApiKey && config.mailjetSecretKey && 'Mailjet') || (config.brevoApiKey && 'Brevo');
+if (verifiedSenderService) {
+  if (!config.emailFrom) {
+    console.warn(`WARNING: ${verifiedSenderService} is set up but EMAIL_FROM is not. Set EMAIL_FROM to the sender you verified in ${verifiedSenderService}, e.g. "RentEase <you@gmail.com>".`);
+  } else {
+    console.log(`Emails are sent with ${verifiedSenderService} from ${config.emailFrom}.`);
+  }
+} else if (config.resendApiKey) {
+  console.log('Emails are sent with Resend.');
+} else {
+  console.warn('Note: no email service is set up (BREVO_API_KEY or RESEND_API_KEY), so verification emails are printed in this log instead of sent.');
 }
 
 const server = app.listen(config.port, config.host, () => {

@@ -88,7 +88,7 @@ The build installs both apps and builds the React app; the API then serves it at
 Environment variables:
 
 - `DATABASE_URL` (strongly recommended): a Supabase/Postgres connection string. **Without it, data lives in a SQLite file that Render erases on every deploy and restart.** Uploaded photos are also erased unless you add a Render Disk.
-- `RESEND_API_KEY` (needed for sign-ups): sends the email-verification links through [Resend](https://resend.com). Without it, the links only appear in the Render log. With Resend's test sender (`onboarding@resend.dev`), emails only reach the address you signed up to Resend with. To email anyone, verify a domain in Resend and set `EMAIL_FROM` (e.g. `RentEase <noreply@yourdomain.com>`).
+- `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, and `EMAIL_FROM` (needed for sign-ups): send the email-verification links through [Mailjet](https://www.mailjet.com) (free, 200 emails a day, no domain needed). `EMAIL_FROM` must be a sender address you verified in Mailjet, e.g. `RentEase <you@gmail.com>`. Without an email service, the links only appear in the Render log. (`BREVO_API_KEY` works the same way; `RESEND_API_KEY` also works, but Resend only emails other people from a domain you own.)
 - `SEED_DEMO_DATA=true` (optional): create the demo accounts and properties on startup (Render's free plan has no shell for `npm run seed`). Also set `DEMO_PASSWORD` to something private, or anyone who reads this README can sign in as `admin`.
 
 To try the Render build locally, stop the dev servers first: on Windows, `npm ci` can't replace `node_modules` while they're running.

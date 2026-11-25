@@ -51,12 +51,15 @@ export const config = {
   // so a forged Host header can't make emails link to another site.
   appUrl: (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173').replace(/\/+$/, ''),
 
-  // Emails are sent with Resend (https://resend.com) when RESEND_API_KEY is set.
-  // Without it, emails are printed in the server log instead (fine for local testing).
+  // Email service (see lib/mailer.js): Mailjet, then Brevo, then Resend, whichever has
+  // keys set; with none, emails are printed in the server log.
+  mailjetApiKey: process.env.MAILJET_API_KEY || '',
+  mailjetSecretKey: process.env.MAILJET_SECRET_KEY || '',
+  brevoApiKey: process.env.BREVO_API_KEY || '',
   resendApiKey: process.env.RESEND_API_KEY || '',
-  // Resend's test address works without your own domain, but only delivers to
-  // the email you signed up to Resend with. Use an address on a verified domain to email anyone.
-  emailFrom: process.env.EMAIL_FROM || 'RentEase <onboarding@resend.dev>',
+  // Who emails come from, e.g. "RentEase <you@gmail.com>". With Mailjet or Brevo it
+  // must be a sender address you verified in that service.
+  emailFrom: process.env.EMAIL_FROM || '',
 
   mediaDir: process.env.MEDIA_DIR || path.join(BACKEND_DIR, 'media'),
   frontendDist: path.resolve(BACKEND_DIR, '..', 'frontend', 'dist'),
