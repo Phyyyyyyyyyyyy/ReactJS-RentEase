@@ -1,6 +1,6 @@
 /** Start the RentEase API server: `npm start` (or `npm run dev` to restart on code changes). */
 import { createApp } from './app.js';
-import { config } from './config.js';
+import { config, ENV_FILES } from './config.js';
 import { openDatabase } from './db.js';
 import { backfillLeases } from './leases.js';
 import { DEMO_PASSWORD, seedProperties, seedUsers } from './seed.js';
@@ -39,6 +39,10 @@ if (verifiedSenderService) {
   console.log('Emails are sent with Resend.');
 } else {
   console.warn('Note: no email service is set up (MAILJET_API_KEY + MAILJET_SECRET_KEY, BREVO_API_KEY, or RESEND_API_KEY), so verification emails are printed in this log instead of sent.');
+  // Help find typos: list the names (never the values) of email-related settings that are present.
+  const seen = Object.keys(process.env).filter((name) => /mail|brevo|resend|email_from/i.test(name))
+    .map((name) => (process.env[name].trim() ? name : `${name} (empty)`));
+  console.warn(`  Email settings found: ${seen.length ? seen.join(', ') : 'none'}. .env files read: ${ENV_FILES.length ? ENV_FILES.join(', ') : 'none'}.`);
 }
 
 const server = app.listen(config.port, config.host, () => {

@@ -8,9 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 export const BACKEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const envFile = path.join(BACKEND_DIR, '.env');
-// Variables already set in the environment win over the file.
-if (existsSync(envFile)) process.loadEnvFile(envFile);
+// .env files, in order: backend/.env (local development), then the repo root and
+// /etc/secrets, where Render puts a "Secret File" named .env. Variables already
+// set in the environment win, and an earlier file wins over a later one.
+export const ENV_FILES = [
+  path.join(BACKEND_DIR, '.env'),
+  path.join(BACKEND_DIR, '..', '.env'),
+  '/etc/secrets/.env',
+].filter((file) => existsSync(file));
+for (const file of ENV_FILES) process.loadEnvFile(file);
 
 function list(value, fallback) {
   return (value ?? fallback).split(',').map((s) => s.trim()).filter(Boolean);
