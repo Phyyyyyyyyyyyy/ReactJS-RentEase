@@ -2,11 +2,11 @@ import { Navigate, Route, Routes } from 'react-router';
 import AppLayout from './components/AppLayout';
 import { dashboardPath, GuestOnly, RequireAuth } from './components/guards';
 import { useAuth } from './context/AuthContext';
+import ReferralCodes from './pages/admin/ReferralCodes';
 import UserFormPage from './pages/admin/UserForm';
 import UserList from './pages/admin/UserList';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
-import VerifyEmail from './pages/auth/VerifyEmail';
 import { AdminDashboard, ManagerDashboard, OwnerDashboard, TenantDashboard } from './pages/Dashboards';
 import NotFound from './pages/NotFound';
 import Notifications from './pages/Notifications';
@@ -57,8 +57,6 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
       <Route path="/register" element={<GuestOnly><Register /></GuestOnly>} />
-      {/* Opened from the email link: works whether or not someone is signed in. */}
-      <Route path="/verify-email" element={<VerifyEmail />} />
 
       <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
         <Route path="/dashboard" element={<Home />} />
@@ -74,6 +72,7 @@ export default function App() {
         <Route path="/admin/users" element={role(['admin'], <UserList />)} />
         <Route path="/admin/users/new" element={role(['admin'], <UserFormPage />)} />
         <Route path="/admin/users/:id/edit" element={role(['admin'], <UserFormPage />)} />
+        <Route path="/admin/referral-codes" element={role(['admin'], <ReferralCodes />)} />
 
         {/* Tenant */}
         <Route path="/browse" element={role(['tenant'], <Browse />)} />

@@ -23,7 +23,10 @@ export default function UserList() {
     <div className="grid gap-6">
       <PageHeader eyebrow="Administrator" title="Users & Access"
         text="Create accounts, change roles, reset passwords, and deactivate accounts.">
-        <Link className="primary-button" to="/admin/users/new">Add account</Link>
+        <div className="flex flex-wrap gap-2">
+          <Link className="secondary-button" to="/admin/referral-codes">Referral codes</Link>
+          <Link className="primary-button" to="/admin/users/new">Add account</Link>
+        </div>
       </PageHeader>
 
       <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }); }}>
@@ -57,7 +60,6 @@ export default function UserList() {
                         <td><span className="badge badge-info">{u.role_display}</span></td>
                         <td>
                           {u.is_active ? <span className="badge badge-success">Active</span> : <span className="badge badge-danger">Inactive</span>}
-                          {!u.email_verified && <span className="badge badge-warning ml-1" title="Hasn't opened the verification email yet">Unverified</span>}
                         </td>
                         <td>{formatDate(u.date_joined, 'M j, Y')}</td>
                         <td>{u.last_login ? formatDate(u.last_login, 'M j, Y g:i A') : 'Never'}</td>

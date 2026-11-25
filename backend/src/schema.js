@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS users (
   is_active INTEGER NOT NULL DEFAULT 1,
   date_joined TEXT NOT NULL,
   last_login TEXT,
-  email_verified_at TEXT
+  -- The referral code the account signed up with (none for accounts an admin created).
+  referral_code_id {REF}
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (LOWER(username));
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (LOWER(email));
@@ -41,15 +42,18 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
 
--- One-time email verification links. Only a SHA-256 hash of each token is stored.
-CREATE TABLE IF NOT EXISTS email_tokens (
-  id TEXT PRIMARY KEY,
-  user_id {REF} NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-  email TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
+-- Referral codes: signing up needs one. An admin creates each code for one role;
+-- it works any number of times until the admin disables it.
+CREATE TABLE IF NOT EXISTS referral_codes (
+  id {ID},
+  code TEXT NOT NULL,
+  role TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_by_id {REF} REFERENCES users (id) ON DELETE SET NULL,
   created_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS email_tokens_user ON email_tokens (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS referral_codes_code_unique ON referral_codes (UPPER(code));
 
 CREATE TABLE IF NOT EXISTS properties (
   id {ID},
@@ -211,10 +215,8 @@ $$;
 export const ADDED_COLUMNS = [
   {
     table: 'users',
-    column: 'email_verified_at',
-    type: 'TEXT',
-    // Accounts that existed before email verification count as verified.
-    fill: 'UPDATE users SET email_verified_at = date_joined WHERE email_verified_at IS NULL',
+    column: 'referral_code_id',
+    type: '{REF}',
   },
   {
     table: 'properties',

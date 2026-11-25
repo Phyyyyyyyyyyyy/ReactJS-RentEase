@@ -63,11 +63,10 @@ export default function adminRoutes(db) {
       let id;
       try {
         id = await db.insert(
-          // An admin vouches for accounts they create, so these are already verified.
-          `INSERT INTO users (username, email, password, first_name, last_name, role, phone, date_joined, email_verified_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO users (username, email, password, first_name, last_name, role, phone, date_joined)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [values.username, values.email, await hashPassword(values.password), values.first_name, values.last_name,
-            values.role, values.phone, nowIso(), nowIso()],
+            values.role, values.phone, nowIso()],
         );
       } catch (error) {
         if (isUniqueViolation(error)) throw formErrors({ username: ['This username is already taken.'] });
@@ -99,12 +98,6 @@ export default function adminRoutes(db) {
       // Admins can't lock themselves out.
       if (self && values.role && values.role !== 'admin') form.error('role', 'You can’t remove your own Admin role.');
       if (self && !values.is_active) form.error('is_active', 'You can’t deactivate your own account.');
-      // Admins can mark an email verified (e.g. if the person never got the link) or unverified.
-      if (form.has('email_verified')) {
-        const verified = ['true', 'on', '1'].includes(form.raw('email_verified').toLowerCase());
-        if (self && !verified) form.error('email_verified', 'You can’t unverify your own email.');
-        values.email_verified_at = verified ? (user.email_verified_at || nowIso()) : null;
-      }
       const password = validateNewPassword(form, { ...user, ...values }, { required: false });
       form.check();
 

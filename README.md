@@ -21,7 +21,7 @@ backend/            Node.js API (Express)
   src/leases.js     creating leases on approval
   src/gcash.js      GCashGateway (sandbox online payments)
   src/notifications.js  in-app notifications and rent reminders
-  src/verification.js   email verification links (sent with src/lib/mailer.js)
+  src/referrals.js     referral codes (needed to sign up)
   src/schema.js     database tables
   src/lib/          sessions + CSRF, form validation, passwords, uploads
   scripts/          seed.js (demo data), create-admin.js
@@ -88,7 +88,6 @@ The build installs both apps and builds the React app; the API then serves it at
 Environment variables:
 
 - `DATABASE_URL` (strongly recommended): a Supabase/Postgres connection string. **Without it, data lives in a SQLite file that Render erases on every deploy and restart.** Uploaded photos are also erased unless you add a Render Disk.
-- `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, and `EMAIL_FROM` (needed for sign-ups): send the email-verification links through [Mailjet](https://www.mailjet.com) (free, 200 emails a day, no domain needed). `EMAIL_FROM` must be a sender address you verified in Mailjet, e.g. `RentEase <you@gmail.com>`. Without an email service, the links only appear in the Render log. (`BREVO_API_KEY` works the same way; `RESEND_API_KEY` also works, but Resend only emails other people from a domain you own.)
 - `SEED_DEMO_DATA=true` (optional): create the demo accounts and properties on startup (Render's free plan has no shell for `npm run seed`). Also set `DEMO_PASSWORD` to something private, or anyone who reads this README can sign in as `admin`.
 
 To try the Render build locally, stop the dev servers first: on Windows, `npm ci` can't replace `node_modules` while they're running.
@@ -100,18 +99,19 @@ cd backend
 npm test
 ```
 
-176 tests cover registration, sign-in (including CSRF), email verification, role access, property managers, browsing and applying, owner property/unit/application management, leases, rent billing, GCash online and manual payments, receipts, expenses and financial reports, notifications, uploads, and user management. [`test/security.test.js`](backend/test/security.test.js) tries 14 common attacks on the app (admin pages, changing IDs in URLs, negative amounts, faked payments, double-submits, password guessing, script injection, fake uploads, SQL injection, and more) and checks that each one fails.
+171 tests cover registration with referral codes, sign-in (including CSRF), role access, property managers, browsing and applying, owner property/unit/application management, leases, rent billing, GCash online and manual payments, receipts, expenses and financial reports, notifications, uploads, and user management. [`test/security.test.js`](backend/test/security.test.js) tries 14 common attacks on the app (admin pages, changing IDs in URLs, negative amounts, faked payments, double-submits, password guessing, script injection, fake uploads, SQL injection, and more) and checks that each one fails.
 
 ## Features
 
 ### Accounts
-- **Register** as a Tenant or Property Owner (Admin and Property Manager accounts are created by an admin). New accounts get an email with a link (valid 24 hours) and can't sign in until they open it; the sign-in page can resend it, and changing your email sends a new link. All fields required, unique username and email, password rules (length, common passwords, all-numeric, too similar to your name), passwords stored as PBKDF2 hashes.
+- **Register** with a **referral code** from an admin. The code decides the account type (Tenant, Property Owner, or Property Manager), so nobody can pick their own role; a link like `/register?code=K7QX-M2PA` fills the code in. Wrong codes are rate-limited. Admin accounts are only created by an admin. All fields required, unique username and email, password rules (length, common passwords, all-numeric, too similar to your name), passwords stored as PBKDF2 hashes.
 - **Sign in** with username or email. **Sign out** from the sidebar or top bar.
 - **Role-based dashboards**: each role sees its own dashboard and sidebar. Opening another role's page sends you back to your own dashboard with an error message. Signed-out visitors go to the login page and come back after signing in.
 - **Profile**: view and edit your name, email, contact number, and photo. Owners also set their GCash number, account name, and QR code.
 
 ### Admins
-- **Users & Access**: search and filter all accounts (unverified emails are marked), create accounts with any role (already verified), mark an email verified, change roles, reset passwords, and deactivate accounts (which signs the person out). Admins can't remove their own Admin role or deactivate themselves.
+- **Users & Access**: search and filter all accounts, create accounts with any role, change roles, reset passwords, and deactivate accounts (which signs the person out). Admins can't remove their own Admin role or deactivate themselves.
+- **Referral codes**: generate random codes or type a custom one, each for one role, with an optional label. Copy the code or its sign-up link, see how many accounts each code created, and disable codes (or delete unused ones).
 
 ### Tenants
 - **Browse** properties that have a vacant unit; search by name, address, or city and filter by type and maximum rent.

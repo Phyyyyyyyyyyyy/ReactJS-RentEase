@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { monthStart } from '../src/billing.js';
 import { addDays, today } from '../src/lib/format.js';
 import { schemaSql } from '../src/schema.js';
-import { makeApplication, makeProperty, makeUnit, makeUser, PASSWORD, reload, setup } from './helpers.js';
+import { makeApplication, makeProperty, makeReferral, makeUnit, makeUser, PASSWORD, reload, setup } from './helpers.js';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489', 'hex');
 const REF = '1234567890123';
@@ -199,14 +199,17 @@ describe('the 14 attacks', () => {
     assert.equal(await count("SELECT COUNT(*) AS n FROM applications WHERE unit_id = ? AND status = 'approved'", [vacant.id]), 1);
   });
 
-  it("8. Admin at signup: you can't make yourself an admin or manager", async () => {
+  it("8. Admin at signup: you can't sign up without a code, or pick a role other than the code's", async () => {
+    await makeReferral(db, 'tenant', 'JOIN-TENANT');
     const base = { first_name: 'Eve', last_name: 'Hacker', email: 'eve@example.com', phone: '0917',
       password1: PASSWORD, password2: PASSWORD };
-    for (const role of ['admin', 'manager', 'ADMIN', 'superuser']) {
-      const response = await client.post('/auth/register/', { ...base, username: `eve_${role}`, role });
-      assert.equal(response.status, 400, role);
+    // No code, a made-up code, and a disabled code are all refused.
+    await db.insert("INSERT INTO referral_codes (code, role, is_active, created_at) VALUES ('OLD-CODE', 'owner', 0, ?)", [today()]);
+    for (const referral_code of ['', 'ADMIN', 'OLD-CODE']) {
+      const response = await client.post('/auth/register/', { ...base, username: 'eve_x', role: 'admin', referral_code });
+      assert.equal(response.status, 400, referral_code);
     }
-    await client.post('/auth/register/', { ...base, username: 'eve', role: 'tenant', is_superuser: true, is_active: 0 });
+    await client.post('/auth/register/', { ...base, username: 'eve', role: 'admin', referral_code: 'JOIN-TENANT', is_superuser: true, is_active: 0 });
     const eve = await db.get("SELECT * FROM users WHERE username = 'eve'");
     assert.deepEqual([eve.role, eve.is_active], ['tenant', 1]);
     // And not later, through the profile form.
@@ -324,9 +327,10 @@ describe('9. Guess the login code: password guessing is cut off', () => {
   });
 
   it('limits mass sign-ups', async () => {
+    await makeReferral(db, 'tenant', 'JOIN-TENANT');
     const signup = (n) => client.post('/auth/register/', {
       first_name: 'A', last_name: 'B', username: `bot${n}`, email: `bot${n}@example.com`, phone: '1',
-      role: 'tenant', password1: PASSWORD, password2: PASSWORD,
+      referral_code: 'JOIN-TENANT', password1: PASSWORD, password2: PASSWORD,
     });
     assert.equal((await signup(1)).status, 201);
     assert.equal((await signup(2)).status, 201);

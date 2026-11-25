@@ -1,16 +1,18 @@
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import AuthLayout from '../../components/AuthLayout';
 import { BusyButton, Field, FormErrors, Messages } from '../../components/ui';
 import { useFlash } from '../../context/FlashContext';
 import { useForm } from '../../hooks/useForm';
 import { api } from '../../lib/api';
-import { SELF_REGISTER_ROLES } from '../../lib/constants';
 
 export default function Register() {
   const { flash } = useFlash();
   const navigate = useNavigate();
+  // A sign-up link like /register?code=ABCD-1234 fills in the referral code.
+  const [params] = useSearchParams();
   const form = useForm({
-    first_name: '', last_name: '', username: '', phone: '', email: '', role: 'tenant', password1: '', password2: '',
+    referral_code: params.get('code') || '', first_name: '', last_name: '', username: '', phone: '', email: '',
+    password1: '', password2: '',
   });
   const { bind, errors } = form;
 
@@ -28,17 +30,20 @@ export default function Register() {
       <div className="auth-copy">
         <span className="eyebrow light">Account registration</span>
         <h1>Start with the portal that matches your rental role.</h1>
-        <p>Public registration is for Tenant and Property Owner accounts. Admin and Property Manager accounts are created by an administrator.</p>
+        <p>Signing up needs a referral code from a RentEase administrator. The code sets your account type: tenant, property owner, or property manager.</p>
       </div>
     )}>
       <form className="auth-card wide-auth-card" onSubmit={onSubmit} noValidate>
         <div className="auth-card-heading">
           <span className="eyebrow">Create account</span>
           <h2>Register for RentEase</h2>
-          <p>All fields are required.</p>
+          <p>All fields are required, including your referral code.</p>
         </div>
         <Messages />
         <FormErrors errors={errors} />
+        <Field label="Referral code" help="Ask a RentEase administrator for a code. It decides your account type." error={errors.referral_code}>
+          <input {...bind('referral_code')} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder="e.g. K7QX-M2PA" />
+        </Field>
         <div className="form-grid two">
           <Field label="First name" error={errors.first_name}><input {...bind('first_name')} autoComplete="given-name" /></Field>
           <Field label="Last name" error={errors.last_name}><input {...bind('last_name')} autoComplete="family-name" /></Field>
@@ -48,11 +53,6 @@ export default function Register() {
           <Field label="Contact number" error={errors.phone}><input {...bind('phone')} type="tel" autoComplete="tel" /></Field>
         </div>
         <Field label="Email" error={errors.email}><input {...bind('email')} type="email" autoComplete="email" /></Field>
-        <Field label="Account type" error={errors.role}>
-          <select {...bind('role')}>
-            {SELF_REGISTER_ROLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </Field>
         <div className="form-grid two">
           <Field label="Password" error={errors.password1}>
             <input {...bind('password1')} type="password" autoComplete="new-password" />

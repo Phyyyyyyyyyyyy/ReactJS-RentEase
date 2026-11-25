@@ -28,17 +28,12 @@ export const ROLES = [
   ['manager', 'Property Manager'],
 ];
 
-// Roles a visitor may pick on the public registration form.
-export const SELF_REGISTER_ROLES = [
-  ['tenant', 'Tenant'],
-  ['owner', 'Property Owner'],
-];
-
 /** Sidebar items per role. `to: null` means the module is not built yet ("Soon"). */
 export const ROLE_MENUS = {
   admin: [
     { to: '/dashboard/admin', label: 'Dashboard', icon: 'home' },
     { to: '/admin/users', label: 'Users & Access', icon: 'users' },
+    { to: '/admin/referral-codes', label: 'Referral Codes', icon: 'key' },
     { to: null, label: 'Properties & Units', icon: 'building' },
     { to: null, label: 'Applications', icon: 'file' },
     { to: '/profile', label: 'My Profile', icon: 'user' },

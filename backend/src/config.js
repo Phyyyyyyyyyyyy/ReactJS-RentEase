@@ -52,21 +52,6 @@ export const config = {
   // (useful where there's no shell to run `npm run seed`, like Render's free plan).
   seedDemoData: flag(process.env.SEED_DEMO_DATA),
 
-  // The site's address, used in links inside emails. On Render it is filled in
-  // automatically (RENDER_EXTERNAL_URL). It is never taken from the request,
-  // so a forged Host header can't make emails link to another site.
-  appUrl: (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173').replace(/\/+$/, ''),
-
-  // Email service (see lib/mailer.js): Mailjet, then Brevo, then Resend, whichever has
-  // keys set; with none, emails are printed in the server log.
-  mailjetApiKey: process.env.MAILJET_API_KEY || '',
-  mailjetSecretKey: process.env.MAILJET_SECRET_KEY || '',
-  brevoApiKey: process.env.BREVO_API_KEY || '',
-  resendApiKey: process.env.RESEND_API_KEY || '',
-  // Who emails come from, e.g. "RentEase <you@gmail.com>". With Mailjet or Brevo it
-  // must be a sender address you verified in that service.
-  emailFrom: process.env.EMAIL_FROM || '',
-
   mediaDir: process.env.MEDIA_DIR || path.join(BACKEND_DIR, 'media'),
   frontendDist: path.resolve(BACKEND_DIR, '..', 'frontend', 'dist'),
 };

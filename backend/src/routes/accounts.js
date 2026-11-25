@@ -4,8 +4,8 @@ import { ledgersFor, tenanciesFor } from '../billing.js';
 import { ensureCsrfCookie, signIn, signOut } from '../lib/auth.js';
 import { deleteFile, imageType, INVALID_IMAGE, saveImage } from '../lib/files.js';
 import { Form } from '../lib/forms.js';
-import { endpoint, fail, formErrors, HttpError, reply } from '../lib/http.js';
-import { sendVerificationEmail, verifyEmailToken } from '../verification.js';
+import { endpoint, fail, formErrors, reply } from '../lib/http.js';
+import { findReferralCode } from '../referrals.js';
 import { remindTenant } from '../notifications.js';
 import { RUNS } from './properties.js';
 import { iso, money, nowIso } from '../lib/format.js';
@@ -13,7 +13,7 @@ import { checkPassword, hashPassword, passwordProblems } from '../lib/passwords.
 import { minutes, RateLimiter } from '../lib/rateLimit.js';
 import { isUniqueViolation } from '../db.js';
 import {
-  emailTaken, findUser, GCASH_NUMBER_RE, ROLES, SELF_REGISTER_ROLES, userBrief, userJson,
+  emailTaken, findUser, GCASH_NUMBER_RE, ROLE_LABEL, ROLES, userBrief, userJson,
   usernameTaken,
 } from '../users.js';
 
@@ -26,17 +26,18 @@ let dummyHash;
 
 /**
  * Validate the fields of a new account (registration, and admins creating users).
- * Returns the cleaned values; errors are recorded on `form`.
+ * `roles` are the roles to choose from; without it (sign-up) the role comes from
+ * the referral code instead. Returns the cleaned values; errors are recorded on `form`.
  */
-export async function validateNewAccount(db, form, roles) {
+export async function validateNewAccount(db, form, roles = null) {
   const values = {
     first_name: form.text('first_name', { max: 150 }),
     last_name: form.text('last_name', { max: 150 }),
     username: form.text('username', { max: 150 }),
     email: form.email('email'),
     phone: form.text('phone', { max: 20 }),
-    role: form.choice('role', roles),
   };
+  if (roles) values.role = form.choice('role', roles);
   if (values.username && form.ok('username')) {
     if (!USERNAME_RE.test(values.username)) {
       form.error('username', 'Enter a valid username. This value may contain only letters, numbers, and @/./+/-/_ characters.');
@@ -68,23 +69,11 @@ export const DEFAULT_LIMITS = {
   loginPerAccount: { limit: 10, windowMs: 15 * 60_000 },
   loginPerAddress: { limit: 50, windowMs: 15 * 60_000 },
   signupPerAddress: { limit: 10, windowMs: 60 * 60_000 },
-  resendPerAccount: { limit: 3, windowMs: 15 * 60_000 },
-  resendPerAddress: { limit: 10, windowMs: 60 * 60_000 },
+  badCodesPerAddress: { limit: 10, windowMs: 15 * 60_000 },
 };
 
-export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS, mailer, appUrl }) {
+export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }) {
   const router = Router();
-
-  /** Email a verification link; returns false (and logs why) if it couldn't be sent. */
-  async function emailLink(user) {
-    try {
-      await sendVerificationEmail(db, mailer, user, appUrl);
-      return true;
-    } catch (error) {
-      console.error(`Could not send the verification email to user ${user.id}: ${error.message}`);
-      return false;
-    }
-  }
 
   endpoint(router, '/auth/session/', {
     public: true,
@@ -99,8 +88,9 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS, 
   // from one network address, sign-in is refused for a while (HTTP 429).
   const failedLoginsPerAccount = new RateLimiter(limits.loginPerAccount);
   const failedLoginsPerAddress = new RateLimiter(limits.loginPerAddress);
-  // Stop mass sign-ups from one address.
+  // Stop mass sign-ups from one address, and guessing referral codes.
   const signupsPerAddress = new RateLimiter(limits.signupPerAddress);
+  const badCodesPerAddress = new RateLimiter(limits.badCodesPerAddress);
 
   endpoint(router, '/auth/login/', {
     public: true,
@@ -132,13 +122,6 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS, 
         throw formErrors({ non_field_errors: [message] }, message);
       }
       failedLoginsPerAccount.reset(accountKey);
-      // Only said after the right password, so it doesn't reveal which emails have accounts.
-      if (!user.email_verified_at) {
-        throw new HttpError(403, {
-          code: 'email_unverified',
-          message: `Please verify your email address first. Open the link we sent to ${user.email}, then sign in again.`,
-        });
-      }
       await signIn(db, req, res, user);
       const fresh = await findUser(db, user.id);
       return { user: userJson(fresh), message: `Welcome back, ${user.first_name || user.username}!` };
@@ -153,25 +136,31 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS, 
     },
   });
 
+  // Signing up needs a referral code from an admin. The code decides the role.
   endpoint(router, '/auth/register/', {
     public: true,
     POST: async (req, res) => {
       if (req.user) throw fail('You are already signed in.');
-      const wait = signupsPerAddress.retryAfter(req.ip);
+      const wait = Math.max(signupsPerAddress.retryAfter(req.ip), badCodesPerAddress.retryAfter(req.ip));
       if (wait) {
         res.set('Retry-After', String(wait));
-        throw fail(`Too many new accounts from this network. Please wait ${minutes(wait)} and try again.`, 429);
+        throw fail(`Too many sign-up attempts from this network. Please wait ${minutes(wait)} and try again.`, 429);
       }
       const form = new Form(req.body);
-      const values = await validateNewAccount(db, form, SELF_REGISTER_ROLES);
+      const codeText = form.text('referral_code', { max: 64 });
+      const referral = codeText && form.ok('referral_code') ? await findReferralCode(db, codeText) : null;
+      if (codeText && form.ok('referral_code') && !referral) {
+        badCodesPerAddress.hit(req.ip);
+        form.error('referral_code', 'This referral code isn’t valid. Check it with the person who gave it to you.');
+      }
+      const values = await validateNewAccount(db, form);
       form.check();
-      let id;
       try {
-        id = await db.insert(
-          `INSERT INTO users (username, email, password, first_name, last_name, role, phone, date_joined)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        await db.insert(
+          `INSERT INTO users (username, email, password, first_name, last_name, role, phone, date_joined, referral_code_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [values.username, values.email, await hashPassword(values.password), values.first_name, values.last_name,
-            values.role, values.phone, nowIso()],
+            referral.role, values.phone, nowIso(), referral.id],
         );
       } catch (error) {
         // The same username or email registered at the same moment by another request.
@@ -179,51 +168,9 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS, 
         throw error;
       }
       signupsPerAddress.hit(req.ip);
-      const sent = await emailLink(await findUser(db, id));
       return reply(201, {
-        message: sent
-          ? `Account created. We sent a verification link to ${values.email}. Open it to activate your account, then sign in.`
-          : 'Account created, but we couldn’t send the verification email. Use “Resend verification email” on the sign-in page.',
+        message: `Account created as ${ROLE_LABEL[referral.role]}. You can now sign in.`,
       });
-    },
-  });
-
-  endpoint(router, '/auth/verify-email/', {
-    public: true,
-    POST: async (req) => {
-      const user = await verifyEmailToken(db, req.body.token);
-      if (!user) {
-        throw fail('This verification link is invalid, was already used, or has expired. '
-          + 'Sign in and use “Resend verification email” to get a new one.');
-      }
-      return { message: 'Email verified. You can now sign in.' };
-    },
-  });
-
-  // Limit resends so this can't be used to flood someone's inbox.
-  const resendsPerAccount = new RateLimiter(limits.resendPerAccount);
-  const resendsPerAddress = new RateLimiter(limits.resendPerAddress);
-
-  endpoint(router, '/auth/resend-verification/', {
-    public: true,
-    POST: async (req, res) => {
-      const form = new Form(req.body);
-      const username = form.text('username', { max: 254 });
-      form.check();
-      const lookup = username.includes('@') ? 'email' : 'username';
-      const user = await db.get(`SELECT * FROM users WHERE LOWER(${lookup}) = LOWER(?)`, [username]);
-      const accountKey = user ? `user:${user.id}` : `name:${username.toLowerCase()}`;
-      const wait = Math.max(resendsPerAccount.retryAfter(accountKey), resendsPerAddress.retryAfter(req.ip));
-      if (wait) {
-        res.set('Retry-After', String(wait));
-        throw fail(`Too many emails requested. Please wait ${minutes(wait)} and try again.`, 429);
-      }
-      resendsPerAccount.hit(accountKey);
-      resendsPerAddress.hit(req.ip);
-      if (user && user.is_active && !user.email_verified_at) await emailLink(user);
-      // The same answer either way, so this doesn't reveal which accounts exist.
-      return { message: 'If that account exists and isn’t verified yet, we’ve sent a new link to its email address. '
-        + 'Check your inbox (and spam folder).' };
     },
   });
 
@@ -281,20 +228,10 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS, 
         values[field] = file ? await saveImage(mediaDir, folder, file) : '';
         await deleteFile(mediaDir, user[field]);
       }
-      // A new email address has to be verified too (needed for the next sign-in).
-      const emailChanged = values.email !== user.email.toLowerCase();
-      if (emailChanged) values.email_verified_at = null;
       const columns = Object.keys(values);
       await db.run(`UPDATE users SET ${columns.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
         [...columns.map((c) => values[c]), user.id]);
-      const updated = await findUser(db, user.id);
-      let message = 'Profile updated successfully.';
-      if (emailChanged) {
-        message = await emailLink(updated)
-          ? `Profile updated. We sent a link to ${updated.email}. Open it to verify your new address; you’ll need it to sign in next time.`
-          : 'Profile updated, but we couldn’t send a link to verify your new email. Use “Resend verification email” on the sign-in page.';
-      }
-      return { user: userJson(updated), message };
+      return { user: userJson(await findUser(db, user.id)), message: 'Profile updated successfully.' };
     },
   });
 

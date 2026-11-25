@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { checkPassword } from '../src/lib/passwords.js';
-import { makeUser, PASSWORD, reload, setup } from './helpers.js';
+import { makeReferral, makeUser, PASSWORD, reload, setup } from './helpers.js';
 
 let env;
 let db;
@@ -16,15 +16,16 @@ const userCount = async () => (await db.get('SELECT COUNT(*) AS n FROM users')).
 const findByUsername = (username) => db.get('SELECT * FROM users WHERE username = ?', [username]);
 
 describe('registration', () => {
+  beforeEach(() => makeReferral(db, 'tenant', 'JOIN-TENANT'));
   const data = (overrides = {}) => ({
     first_name: 'Juan', last_name: 'Dela Cruz', username: 'juan', email: 'juan@example.com', phone: '09170000000',
-    role: 'tenant', password1: PASSWORD, password2: PASSWORD, ...overrides,
+    referral_code: 'JOIN-TENANT', password1: PASSWORD, password2: PASSWORD, ...overrides,
   });
 
   it('creates the account and hashes the password', async () => {
     const response = await client.post('/auth/register/', data());
     assert.equal(response.status, 201);
-    assert.match(response.json.message, /Account created\. We sent a verification link to juan@example\.com/);
+    assert.equal(response.json.message, 'Account created as Tenant. You can now sign in.');
     const user = await findByUsername('juan');
     assert.ok(user.password.startsWith('pbkdf2_sha256$'));
     assert.ok(await checkPassword(PASSWORD, user.password));
@@ -68,9 +69,15 @@ describe('registration', () => {
     assert.deepEqual(similar.json.errors.password2, ['The password is too similar to the last name.']);
   });
 
-  it('cannot self-register as an admin', async () => {
-    assert.equal((await client.post('/auth/register/', data({ role: 'admin' }))).status, 400);
+  it('needs a valid referral code, which decides the role', async () => {
+    const missing = await client.post('/auth/register/', data({ referral_code: '' }));
+    assert.deepEqual(missing.json.errors.referral_code, ['This field is required.']);
+    const wrong = await client.post('/auth/register/', data({ referral_code: 'NOPE-1234' }));
+    assert.match(wrong.json.errors.referral_code[0], /isn’t valid/);
     assert.equal(await findByUsername('juan'), undefined);
+    // Asking for a different role is ignored: the code's role wins.
+    assert.equal((await client.post('/auth/register/', data({ role: 'admin', referral_code: ' join-tenant ' }))).status, 201);
+    assert.equal((await findByUsername('juan')).role, 'tenant');
   });
 });
 
@@ -186,7 +193,7 @@ describe('profile', () => {
     const response = await client.postForm('/profile/', {
       first_name: 'Alicia', last_name: 'Reyes', email: 'alicia@example.com', phone: '0999',
     });
-    assert.match(response.json.message, /We sent a link to alicia@example\.com/); // the new email must be verified
+    assert.equal(response.json.message, 'Profile updated successfully.');
     const fresh = await reload(db, 'users', user);
     assert.deepEqual([fresh.first_name, fresh.email, fresh.phone], ['Alicia', 'alicia@example.com', '0999']);
     assert.equal((await reload(db, 'users', other)).email, 'bob@example.com');

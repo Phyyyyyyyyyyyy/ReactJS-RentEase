@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link } from 'react-router';
 import AuthLayout from '../../components/AuthLayout';
 import Icon from '../../components/Icon';
@@ -10,40 +9,16 @@ import { api } from '../../lib/api';
 
 export default function Login() {
   const { setUser } = useAuth();
-  const { flash, notify } = useFlash();
+  const { flash } = useFlash();
   const form = useForm({ username: '', password: '' });
-  const [unverified, setUnverified] = useState(false);
-  const [resending, setResending] = useState(false);
 
   const onSubmit = (e) => {
     e.preventDefault();
     form.submit(async (values) => {
-      try {
-        const data = await api('/auth/login/', { method: 'POST', body: values });
-        flash('success', data.message);
-        setUser(data.user); // <GuestOnly> then sends them on (to ?next= or their dashboard)
-      } catch (error) {
-        setUnverified(error.data?.code === 'email_unverified');
-        throw error;
-      }
+      const data = await api('/auth/login/', { method: 'POST', body: values });
+      flash('success', data.message);
+      setUser(data.user); // <GuestOnly> then sends them on (to ?next= or their dashboard)
     });
-  };
-
-  const resend = async () => {
-    const username = form.values.username.trim();
-    if (!username) {
-      notify('error', 'Enter your username or email above, then click “Resend verification email”.');
-      return;
-    }
-    setResending(true);
-    try {
-      const data = await api('/auth/resend-verification/', { method: 'POST', body: { username } });
-      notify('success', data.message);
-    } catch (error) {
-      notify('error', error.message);
-    } finally {
-      setResending(false);
-    }
   };
 
   return (
@@ -77,14 +52,7 @@ export default function Login() {
         <BusyButton className="primary-button full" busy={form.busy} busyText="Signing in…">
           Sign in <Icon name="arrow" size={18} />
         </BusyButton>
-        <p className="auth-switch">
-          {unverified ? 'Didn’t get the email? ' : 'Need a new verification link? '}
-          <BusyButton type="button" busy={resending} busyText="Sending…" onClick={resend}
-            className={unverified ? 'secondary-button compact cursor-pointer' : 'cursor-pointer border-0 bg-transparent p-0 font-bold text-brand'}>
-            Resend verification email
-          </BusyButton>
-        </p>
-        <p className="auth-switch">No account yet? <Link to="/register">Create an account</Link></p>
+        <p className="auth-switch">Have a referral code? <Link to="/register">Create an account</Link></p>
       </form>
     </AuthLayout>
   );

@@ -34,7 +34,7 @@ function UserForm({ account }) {
   const self = account?.id === me.id;
   const form = useForm(account
     ? { first_name: account.first_name, last_name: account.last_name, email: account.email, phone: account.phone,
-      role: account.role, is_active: account.is_active, email_verified: account.email_verified, password1: '', password2: '' }
+      role: account.role, is_active: account.is_active, password1: '', password2: '' }
     : EMPTY);
   const { bind, errors, values, setValue } = form;
 
@@ -86,15 +86,6 @@ function UserForm({ account }) {
                 <input type="checkbox" className="!w-auto" checked={Boolean(values.is_active)} disabled={self}
                   onChange={(e) => setValue('is_active', e.target.checked)} />
                 Active: can sign in. Deactivating signs the person out.
-              </span>
-            </Field>
-          )}
-          {account && (
-            <Field label="Email verification" error={errors.email_verified}>
-              <span className="inline-flex items-center gap-2 text-sm font-normal text-slate-700">
-                <input type="checkbox" className="!w-auto" checked={Boolean(values.email_verified)} disabled={self && account.email_verified}
-                  onChange={(e) => setValue('email_verified', e.target.checked)} />
-                Email verified: tick this if the person can't get the verification email.
               </span>
             </Field>
           )}
