@@ -75,7 +75,7 @@ Copy `backend/.env.example` to `backend/.env` to customize the backend settings.
 2. Set `DATABASE_URL` in `backend/.env` or in your hosting service's environment. Fill in the database password and percent-encode reserved characters in it, such as `@` as `%40`. Keep this URI on the server.
 3. Run `npm start` in `backend/`. The API creates or upgrades the RentEase tables on startup. `npm run create-admin` and `npm run seed` also use the configured database.
 
-Remote connections use verified TLS by default. If your connection requires a custom CA, download it from Supabase and set `sslmode=verify-full` and `sslrootcert` in the URI. Existing SQLite records need an explicit import to move to Supabase. [Supabase SSL setup](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl)
+Remote connections are always encrypted (TLS). Supabase's pooler uses its own certificate authority, which Node doesn't know, so by default the certificate isn't checked against public CAs (otherwise every connection fails with "self-signed certificate in certificate chain"). For full verification, download the CA certificate from Supabase (Project Settings > Database > SSL) and either set `DATABASE_CA_CERT` to its contents (easiest on Render) or put `sslmode=verify-full` and `sslrootcert=<file>` in the URI. Existing SQLite records need an explicit import to move to Supabase. [Supabase SSL setup](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl)
 
 ### One server instead of two
 
