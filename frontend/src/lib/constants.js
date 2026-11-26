@@ -52,8 +52,6 @@ export const ROLE_MENUS = {
     { to: '/dashboard/admin', label: 'Dashboard', icon: 'home' },
     { to: '/admin/users', label: 'Users & Access', icon: 'users' },
     { to: '/admin/referral-codes', label: 'Referral Codes', icon: 'key' },
-    { to: null, label: 'Properties & Units', icon: 'building' },
-    { to: null, label: 'Applications', icon: 'file' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
   ],
   owner: [
