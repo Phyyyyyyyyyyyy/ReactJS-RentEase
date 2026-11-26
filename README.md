@@ -1,6 +1,8 @@
 # RentEase (React version)
 
-RentEase connects **property owners**, **tenants**, **staff**, and **administrators** in one web app. Owners list properties and units, tenants find and apply for rentals, owners approve applications, and rent is billed monthly and paid through GCash or in person.
+RentEase connects **property owners**, **tenants**, **property managers**, and **administrators** in one web app. Owners list properties and units (for rent or rent-to-own), tenants sign up with a referral code and apply for rentals, owners approve applications, and rent is billed on each unit's payment terms and paid through GCash, check, bank, or cash.
+
+**Live:** https://reactjs-rentease.onrender.com (Render), with its data in **Supabase** (PostgreSQL).
 
 The whole project is JavaScript: a **React single-page app** in `frontend/` talks to a **Node.js + Express JSON API** in `backend/`. (It started as a Django app; the API keeps the same endpoints, validation rules, and rent billing.)
 
@@ -22,12 +24,14 @@ backend/            Node.js API (Express)
   src/gcash.js      GCashGateway (sandbox online payments)
   src/notifications.js  in-app notifications and rent reminders
   src/referrals.js     referral codes (needed to sign up)
+  src/bootstrap.js     admin account from ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD
+  src/db.js         SQLite or PostgreSQL (Supabase) connection
   src/schema.js     database tables
   src/lib/          sessions + CSRF, form validation, passwords, uploads
-  scripts/          seed.js (demo data), create-admin.js
+  scripts/          seed.js (demo data), create-admin.js, db-check.js (connection check)
   test/             API tests (node --test)
 frontend/           React app
-  src/pages/        one component per page (auth, dashboards, tenant/, owner/, admin/, Notifications, Receipt)
+  src/pages/        one component per page (auth, dashboards, tenant/, owner/, admin/, Notifications, Receipt, Statement)
   src/components/   layout, sidebar, form fields, badges, tables
   src/lib/api.js    fetch wrapper (sends the CSRF token)
 ```
@@ -65,15 +69,26 @@ Open **http://localhost:5173/**. The Vite dev server forwards `/api` and `/media
 
 Demo accounts (after `npm run seed`): `admin`, `owner`, `manager` (manages Cebu City Residences), `tenant`, all with password `RentEase@2026`. To create your own admin instead, run `npm run create-admin` in `backend/`.
 
+### Useful commands (in `backend/`)
+
+| Command | What it does |
+|---|---|
+| `npm start` | Run the API (`npm run dev` restarts it when code changes) |
+| `npm test` | Run all the tests |
+| `npm run db:check` | Check the database connection: which database, tables, accounts, and Row Level Security. Never prints the password |
+| `npm run seed` | Create demo accounts and sample properties (skips what already exists) |
+| `npm run create-admin` | Create an admin account from the command line |
+
 ### Settings
 
-Copy `backend/.env.example` to `backend/.env` to customize the backend settings. For local development, leave `DATABASE_URL` unset to use `backend/rentease.sqlite3`.
+Copy `backend/.env.example` to `backend/.env` to customize the backend settings. For local development, leave `DATABASE_URL` unset to use `backend/rentease.sqlite3`. Never commit `backend/.env`; it's in `.gitignore`.
 
 ### Connect to Supabase
 
-1. In your Supabase project, open **Connect** and copy the **Session pooler** PostgreSQL URI. The direct URI also works on networks that can reach it. [Supabase connection options](https://supabase.com/docs/guides/database/connecting-to-postgres)
-2. Set `DATABASE_URL` in `backend/.env` or in your hosting service's environment. Fill in the database password and percent-encode reserved characters in it, such as `@` as `%40`. Keep this URI on the server.
-3. Run `npm start` in `backend/`. The API creates or upgrades the RentEase tables on startup. `npm run create-admin` and `npm run seed` also use the configured database.
+1. In your Supabase project, open **Connect** and copy the **Session pooler** PostgreSQL URI (host ending in `pooler.supabase.com`). Don't use the **Direct connection** (`db.<project>.supabase.co`) for Render: it's IPv6-only and Render can't reach it. You don't need to link GitHub or enable the Data API in Supabase. [Supabase connection options](https://supabase.com/docs/guides/database/connecting-to-postgres)
+2. Set `DATABASE_URL` in `backend/.env` (local) and in **Render → Environment** (live). Replace `[YOUR-PASSWORD]` with the database password (no brackets) and percent-encode reserved characters in it, such as `@` as `%40`. Keep this URI out of Git.
+3. Start the API (`npm start` locally, or **Save, rebuild, and deploy** on Render). It creates or upgrades the RentEase tables on startup; there's nothing to set up by hand in Supabase. The Render log shows `database: PostgreSQL (DATABASE_URL)`.
+4. Check it with `npm run db:check`, or in **Supabase → Table Editor** (you should see `users`, `properties`, `leases`, `payments`, and the rest). `npm run create-admin` and `npm run seed` also use the configured database.
 
 Remote connections are always encrypted (TLS). Supabase's pooler uses its own certificate authority, which Node doesn't know, so by default the certificate isn't checked against public CAs (otherwise every connection fails with "self-signed certificate in certificate chain"). For full verification, download the CA certificate from Supabase (Project Settings > Database > SSL) and either set `DATABASE_CA_CERT` to its contents (easiest on Render) or put `sslmode=verify-full` and `sslrootcert=<file>` in the URI. Existing SQLite records need an explicit import to move to Supabase. [Supabase SSL setup](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl)
 
@@ -95,9 +110,10 @@ The build installs both apps and builds the React app; the API then serves it at
 
 Environment variables:
 
-- `DATABASE_URL` (strongly recommended): a Supabase/Postgres connection string. **Without it, data lives in a SQLite file that Render erases on every deploy and restart.** Uploaded photos are also erased unless you add a Render Disk.
+- `DATABASE_URL` (required for real use): the Supabase **Session pooler** connection string (see *Connect to Supabase*). **Without it, data lives in a SQLite file that Render erases on every deploy and restart.** Uploaded images (profile photos, GCash QR codes, receipt screenshots) are still stored on Render's disk and are erased on restart unless you add a Render Disk.
 - `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (recommended): on every start, creates that admin account if it's missing, or sets its password if it exists (so it also recovers a locked-out admin). The password must pass the normal password rules; the log says what happened.
 - `SEED_DEMO_DATA=true` (optional): create the demo accounts and properties on startup (Render's free plan has no shell for `npm run seed`). Also set `DEMO_PASSWORD` to something private, or anyone who reads this README can sign in as `admin`.
+- Don't set `PORT`, `HOST`, `COOKIE_SECURE`, or `TRUST_PROXY` on Render; the app sets them correctly by itself there.
 
 To try the Render build locally, stop the dev servers first: on Windows, `npm ci` can't replace `node_modules` while they're running.
 
@@ -128,16 +144,19 @@ The suite covers registration with referral codes, sign-in (including CSRF), rol
 - **Browse** properties that have a vacant unit; search by name, address, or city and filter by type and maximum rent.
 - **Apply** for a vacant unit with an optional move-in date and message. No past dates, no occupied units, one pending application per unit.
 - **My Applications** with status tabs; edit or withdraw while pending.
-- **Rent & Payments**: monthly balance, overdue months, credit, history, and the lease (dates, rent, deposit).
+- **Rent & Payments**: balance, overdue months, credit, history, and the lease (dates, rent, payment terms, deposit; contract price and term for rent-to-own).
+- **Statement of account**: every confirmed payment with date, description, amount, and mode, plus total paid (and remaining balance for rent-to-own). Printable, or download as CSV.
 - **Pay online with GCash**: choose an amount, pay on the checkout screen, and the payment counts immediately with a printable official receipt. This runs in **sandbox (test) mode**: no real money moves. Real GCash payments need a merchant account with a provider such as PayMongo; `src/gcash.js` is where it would plug in.
 - **Already sent GCash?** Submit the 13-digit reference number (and optionally a screenshot) for the owner to confirm. Pending submissions can be cancelled.
 - **Notifications** (bell in the top bar): application results, payment confirmations, lease changes, and rent reminders (due within 5 days, and monthly while overdue).
 
 ### Property owners
 - **My Properties**: add, edit, and delete properties (no duplicates at the same address) and their units (unique names, rent above zero, Vacant/Occupied). **Assign a Property Manager** to a property.
-- **Applications**: approve or reject. Approving creates a **12-month lease** at the unit's rent, marks the unit occupied, and rejects the other pending applications for it.
+- **Rent or rent-to-own, per unit**: a rent-to-own unit has a contract price, term in years, interest rate (recorded for reference), reservation fee, and a monthly payment the owner sets. Remaining balance = contract price − everything paid.
+- **Payment terms, per unit**: monthly, or every 2–12 months. Each bill covers that many months at the monthly rate (e.g. ₱20,000/month every 2 months = ₱40,000 every 2 months).
+- **Applications**: approve or reject. Approving creates a lease from the unit's terms (12 months for rent; the full term for rent-to-own), marks the unit occupied, and rejects the other pending applications for it. A lease keeps the terms it was approved with, even if the unit changes later.
 - **Leases**: renew (new end date, optionally a new rent for months not billed yet), terminate (rent stops after this month and the unit becomes vacant), and set the deposit.
-- **Rent Payments**: confirm or reject tenants' GCash payments, record cash/bank/other payments (they count immediately), "Mark paid" shortcuts per month, void mistakes, and print receipts.
+- **Rent Payments**: confirm or reject tenants' GCash payments, record payments yourself (they count immediately): what it's for (rent, reservation, other) and the mode (cash, check deposit, online bank deposit, GCash, bank transfer, other) with a check/reference number and any past date. "Mark paid" shortcuts per bill, void mistakes, print receipts, and open each tenant's **statement of account**.
 - **Finances**: record expenses per property (repairs, utilities, taxes...), and see rent received, expenses, and net income per property for any period, with CSV export.
 - **Notifications** for new applications and GCash payments to confirm.
 
@@ -145,7 +164,7 @@ The suite covers registration with referral codes, sign-in (including CSRF), rol
 - See the properties owners assigned to them (view only), review their applications, confirm their payments, and renew or terminate their leases. Owners keep full control; managers can't edit properties, units, or finances.
 
 ### Rent billing
-Once approved, the tenant is billed the lease's monthly rent every month from the lease start (move-in, never before approval) to its end date, while the unit is occupied. A terminated or expired lease stops billing. Rent is due on the last day of the month. Confirmed payments are applied to the oldest unpaid month first; anything extra becomes credit for future months.
+Once approved, the tenant is billed from the lease start (move-in, never before approval) to its end date, while the unit is occupied: one bill per payment period (every month, or every 2–12 months), each covering that many months at the lease's monthly rate. A lease's last bill only covers the months left, and a 12-month lease starting mid-month gets 12 bills, not 13. Each bill is due on the last day of its first month. A terminated or expired lease stops billing. Confirmed payments are applied to the oldest unpaid bill first; anything extra becomes credit for future bills. Reservation payments count toward a rent-to-own contract price but not toward the regular bills.
 
 ### Security
 - Every API query is filtered by the signed-in user, so other people's records return 404.
