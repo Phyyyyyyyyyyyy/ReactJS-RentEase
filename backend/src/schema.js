@@ -126,18 +126,6 @@ CREATE TABLE IF NOT EXISTS expenses (
 );
 CREATE INDEX IF NOT EXISTS expenses_property ON expenses (property_id, spent_on);
 
--- Online GCash checkouts (sandbox mode for now). id is the random code in the checkout link.
-CREATE TABLE IF NOT EXISTS gcash_checkouts (
-  id TEXT PRIMARY KEY,
-  tenancy_id {REF} NOT NULL REFERENCES applications (id) ON DELETE CASCADE,
-  tenant_id {REF} NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-  amount {MONEY} NOT NULL CHECK (amount > 0),
-  status TEXT NOT NULL DEFAULT 'pending',
-  payment_id {REF} REFERENCES payments (id) ON DELETE SET NULL,
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL
-);
-
 -- In-app notifications. dedupe_key stops the same reminder being sent twice.
 CREATE TABLE IF NOT EXISTS notifications (
   id {ID},
@@ -181,29 +169,50 @@ CREATE INDEX IF NOT EXISTS payments_tenancy ON payments (tenancy_id);
 -- The same GCash transfer cannot be submitted twice (unless it was rejected).
 CREATE UNIQUE INDEX IF NOT EXISTS unique_active_gcash_reference
   ON payments (reference_number) WHERE method = 'gcash' AND reference_number <> '' AND status <> 'rejected';
+
+-- Online GCash checkouts (sandbox mode for now). id is the random code in the checkout link.
+CREATE TABLE IF NOT EXISTS gcash_checkouts (
+  id TEXT PRIMARY KEY,
+  tenancy_id {REF} NOT NULL REFERENCES applications (id) ON DELETE CASCADE,
+  tenant_id {REF} NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  amount {MONEY} NOT NULL CHECK (amount > 0),
+  status TEXT NOT NULL DEFAULT 'pending',
+  payment_id {REF} REFERENCES payments (id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
 `;
 
-/**
- * Supabase publishes every table in the `public` schema through its Data API
- * (PostgREST) to the `anon` and `authenticated` roles. RentEase never uses that
- * API; the server connects to PostgreSQL directly. So enable Row Level Security
- * on every table (no policies = the Data API sees no rows) and revoke those
- * roles' privileges. Runs after every start, so new tables are covered too.
- */
+const APP_TABLES = [
+  'users', 'sessions', 'referral_codes', 'properties', 'units', 'applications',
+  'leases', 'expenses', 'notifications', 'rent_charges', 'payments', 'gcash_checkouts',
+];
+
+/** Keep RentEase tables available through the backend's PostgreSQL connection. */
 const SUPABASE_LOCKDOWN = `
 DO $$
 DECLARE
-  t record;
+  app_table record;
+  relation text;
+  sequence_name text;
+  grantees text;
 BEGIN
-  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
-  END LOOP;
+  SELECT concat_ws(', ', 'PUBLIC', string_agg(quote_ident(rolname), ', '))
+    INTO grantees FROM pg_roles WHERE rolname IN ('anon', 'authenticated');
 
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon')
-     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-    REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
-    REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
-  END IF;
+  FOR app_table IN SELECT tablename, rowsecurity FROM pg_tables
+    WHERE schemaname = 'public' AND tablename IN (${APP_TABLES.map((table) => `'${table}'`).join(', ')})
+  LOOP
+    relation := format('public.%I', app_table.tablename);
+    IF NOT app_table.rowsecurity THEN
+      EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', relation);
+    END IF;
+    EXECUTE format('REVOKE ALL ON TABLE %s FROM %s', relation, grantees);
+    sequence_name := pg_get_serial_sequence(relation, 'id');
+    IF sequence_name IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON SEQUENCE %s FROM %s', sequence_name, grantees);
+    END IF;
+  END LOOP;
 END
 $$;
 `;

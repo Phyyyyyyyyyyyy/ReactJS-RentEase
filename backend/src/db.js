@@ -126,42 +126,42 @@ export function cleanDatabaseUrl(url) {
 export function checkDatabaseUrl(url) {
   const problem = (reason) => new Error(
     `DATABASE_URL is not a valid PostgreSQL connection string: ${reason}\n`
-    + 'Copy it from Supabase (Connect > Session pooler) and put your database password in place of [YOUR-PASSWORD], '
-    + 'without the square brackets.',
+    + 'Copy the URI from Supabase (Connect > Session pooler) and URL-encode reserved characters in the database password.',
   );
-  if (!/^postgres(ql)?:\/\//.test(url)) throw problem('it must start with postgresql://');
-  if (/\[YOUR-PASSWORD\]/i.test(url)) throw problem('it still contains [YOUR-PASSWORD].');
-  const specialCharacters = problem('it could not be read. If your password contains @ # / ? : % or spaces, '
-    + 'reset it in Supabase to letters and numbers only, or replace those characters with %40 %23 %2F %3F %3A %25 %20.');
+  if (!/^postgres(?:ql)?:\/\//.test(url)) throw problem('it must start with postgresql://');
+  if (/\[YOUR-(?:DATABASE-)?PASSWORD\]/i.test(url)) throw problem('replace the database password placeholder.');
+
   let parsed;
   try {
     parsed = new URL(url);
+    decodeURIComponent(parsed.href); // Reject malformed percent escapes before handing the URI to pg.
   } catch {
-    throw specialCharacters;
+    throw problem('the URI is malformed.');
   }
-  // A # or ? in the password cuts the URL short; a / moves the host into the path.
-  if (parsed.hash || !/^\/[^/]*$/.test(parsed.pathname) || !parsed.port) throw specialCharacters;
-  if (!parsed.password) throw problem('it has no password.');
-  if (/^\[.*\]$/.test(decodeURIComponent(parsed.password))) throw problem('remove the square brackets around your password.');
-  if (!parsed.hostname) throw problem('it has no host name.');
-  if (/^db\.[a-z0-9]+\.supabase\.co$/i.test(parsed.hostname)) {
-    throw problem('this is Supabase\'s "Direct connection" (db.<project>.supabase.co), which only works over IPv6, '
-      + 'and hosts like Render can\'t reach it. In Supabase click Connect and choose Method: Session pooler '
-      + '(the host ends in pooler.supabase.com).');
+  if (parsed.hash || !parsed.hostname || !parsed.username || !/^\/[^/]+$/.test(parsed.pathname)) {
+    throw problem('include the database user, host, and name without a URL fragment.');
   }
+  if (!parsed.password) throw problem('it has no database password.');
+  return parsed;
 }
 
 class PostgresDatabase {
   dialect = 'postgres';
 
   static async connect(url) {
-    checkDatabaseUrl(url);
+    const uri = checkDatabaseUrl(url);
     const { default: pg } = await import('pg');
     // COUNT() and SUM() come back as strings by default; the numbers here fit in a JS number.
     pg.types.setTypeParser(20, Number); // bigint
     pg.types.setTypeParser(1700, Number); // numeric
-    const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url) || /sslmode=disable/.test(url);
-    const pool = new pg.Pool({ connectionString: url, ssl: local ? false : { rejectUnauthorized: false }, max: 10 });
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(uri.hostname.toLowerCase());
+    const pool = new pg.Pool({
+      connectionString: uri.href,
+      ssl: !local,
+      connectionTimeoutMillis: 10_000,
+      max: 10,
+    });
+    pool.on('error', (error) => console.warn('PostgreSQL idle connection closed.', error.code || error.name));
     return new PostgresDatabase(pool);
   }
 
@@ -194,31 +194,37 @@ class PostgresDatabase {
 
   async tx(fn) {
     const client = await this.pool.connect();
+    let discard = false;
     try {
       await client.query('BEGIN');
       const result = await fn(PostgresDatabase.scope(client));
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      await client.query('ROLLBACK').catch(() => { discard = true; });
       throw error;
     } finally {
-      client.release();
+      client.release(discard);
     }
   }
 
   async migrate() {
-    await this.pool.query(schemaSql('postgres'));
-    for (const { table, column, type, fill } of ADDED_COLUMNS) {
-      const { rowCount } = await this.pool.query(
-        "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2",
-        [table, column],
-      );
-      if (!rowCount) {
-        await this.pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${columnType(type, 'postgres')};${fill ? ` ${fill};` : ''}`);
+    await this.tx(async (t) => {
+      // Hold the lock through commit so replicas can safely initialize the same database.
+      await t.run("SELECT pg_advisory_xact_lock(hashtext('rentease.schema'))");
+      await t.run('SET LOCAL search_path TO public');
+      await t.run(schemaSql('postgres'));
+      const columns = new Set((await t.all(
+        "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'",
+      )).map(({ table_name, column_name }) => `${table_name}.${column_name}`));
+      for (const { table, column, type, fill } of ADDED_COLUMNS) {
+        if (!columns.has(`${table}.${column}`)) {
+          await t.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${columnType(type, 'postgres')}`);
+          if (fill) await t.run(fill);
+        }
       }
-    }
-    for (const sql of DATA_MIGRATIONS) await this.pool.query(sql);
+      for (const sql of DATA_MIGRATIONS) await t.run(sql);
+    });
   }
 
   async close() {
@@ -230,6 +236,11 @@ class PostgresDatabase {
 export async function openDatabase({ url = config.databaseUrl, sqlitePath = config.sqlitePath } = {}) {
   url = cleanDatabaseUrl(url);
   const db = url ? await PostgresDatabase.connect(url) : new SqliteDatabase(sqlitePath);
-  await db.migrate();
-  return db;
+  try {
+    await db.migrate();
+    return db;
+  } catch (error) {
+    await db.close();
+    throw error;
+  }
 }

@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch-path=src src/server.js",
-    "test": "node --test --test-concurrency=1 test/",
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
     "seed": "node scripts/seed.js",
     "create-admin": "node scripts/create-admin.js"
   },

@@ -67,7 +67,15 @@ Demo accounts (after `npm run seed`): `admin`, `owner`, `manager` (manages Cebu 
 
 ### Settings
 
-Settings are optional. To change them, copy `backend/.env.example` to `backend/.env`. Without `DATABASE_URL`, data is kept in `backend/rentease.sqlite3`. With a Supabase `DATABASE_URL`, the tables are created on first start, and Row Level Security is switched on for them so Supabase's public Data API can't read them.
+Copy `backend/.env.example` to `backend/.env` to customize the backend settings. For local development, leave `DATABASE_URL` unset to use `backend/rentease.sqlite3`.
+
+### Connect to Supabase
+
+1. In your Supabase project, open **Connect** and copy the **Session pooler** PostgreSQL URI. The direct URI also works on networks that can reach it. [Supabase connection options](https://supabase.com/docs/guides/database/connecting-to-postgres)
+2. Set `DATABASE_URL` in `backend/.env` or in your hosting service's environment. Fill in the database password and percent-encode reserved characters in it, such as `@` as `%40`. Keep this URI on the server.
+3. Run `npm start` in `backend/`. The API creates or upgrades the RentEase tables on startup. `npm run create-admin` and `npm run seed` also use the configured database.
+
+Remote connections use verified TLS by default. If your connection requires a custom CA, download it from Supabase and set `sslmode=verify-full` and `sslrootcert` in the URI. Existing SQLite records need an explicit import to move to Supabase. [Supabase SSL setup](https://supabase.com/docs/guides/database/connecting-to-postgres#ssl)
 
 ### One server instead of two
 
@@ -100,7 +108,9 @@ cd backend
 npm test
 ```
 
-171 tests cover registration with referral codes, sign-in (including CSRF), role access, property managers, browsing and applying, owner property/unit/application management, leases, rent billing, GCash online and manual payments, receipts, expenses and financial reports, notifications, uploads, and user management. [`test/security.test.js`](backend/test/security.test.js) tries 14 common attacks on the app (admin pages, changing IDs in URLs, negative amounts, faked payments, double-submits, password guessing, script injection, fake uploads, SQL injection, and more) and checks that each one fails.
+Set `TEST_POSTGRES_URL` to a blank, disposable PostgreSQL database before running the suite to include the PostgreSQL startup test.
+
+The suite covers registration with referral codes, sign-in (including CSRF), role access, property managers, browsing and applying, owner property/unit/application management, leases, rent billing, GCash online and manual payments, receipts, expenses and financial reports, notifications, uploads, and user management. [`test/security.test.js`](backend/test/security.test.js) tries 14 common attacks on the app (admin pages, changing IDs in URLs, negative amounts, faked payments, double-submits, password guessing, script injection, fake uploads, SQL injection, and more) and checks that each one fails.
 
 ## Features
 
@@ -145,7 +155,7 @@ Once approved, the tenant is billed the lease's monthly rent every month from th
 - Money amounts must be positive, so negative amounts and "-1 items" tricks are refused. Requests sent at the same moment (double-submits) can only succeed once.
 - The built React page sends a Content-Security-Policy, so the browser only runs the site's own scripts.
 - Session tokens are stored only as SHA-256 hashes, and uploads must be real images (checked from the file contents).
-- On Supabase, Row Level Security is enabled on all tables at startup so the public Data API can't read them.
+- On Supabase, startup enables Row Level Security on RentEase tables and revokes Data API roles' privileges on those tables and their sequences.
 
 ## API overview
 

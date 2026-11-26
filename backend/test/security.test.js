@@ -294,9 +294,9 @@ describe('the 14 attacks', () => {
       const text = await response.text();
       assert.ok(!text.startsWith('SQLite format') && !/DATABASE_URL|SECRET/.test(text), url);
     }
-    // On Supabase, the public Data API is locked out of every table.
+    // On Supabase, the public Data API is locked out of the RentEase tables.
     assert.match(schemaSql('postgres'), /ENABLE ROW LEVEL SECURITY/);
-    assert.match(schemaSql('postgres'), /REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated/);
+    assert.match(schemaSql('postgres'), /REVOKE ALL ON TABLE %s FROM %s/);
   });
 });
 
