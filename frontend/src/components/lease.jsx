@@ -22,8 +22,10 @@ export function LeaseSummary({ lease }) {
   return (
     <p className="m-0 flex flex-wrap items-center gap-2 text-xs text-slate-500">
       <Icon name="file" size={14} />
-      Lease {formatDate(lease.start_date, 'M j, Y')} – {formatDate(lease.end_date, 'M j, Y')}
+      {lease.type === 'rent_to_own' ? 'Rent-to-own' : 'Lease'} {formatDate(lease.start_date, 'M j, Y')} – {formatDate(lease.end_date, 'M j, Y')}
       <LeaseBadge lease={lease} />
+      {lease.type === 'rent_to_own' && <span>· Contract {peso(lease.contract_price)} over {lease.term_years} yrs</span>}
+      {lease.payment_interval_months > 1 && <span>· {peso(lease.amount_per_payment)} {lease.payment_terms.toLowerCase()}</span>}
       {positive(lease.deposit) && <span>· Deposit {peso(lease.deposit)}</span>}
     </p>
   );
@@ -76,7 +78,10 @@ export function LeaseManager({ lease, unitName, onChange }) {
           <LeaseBadge lease={lease} />
         </div>
         <Fact label="Term" value={`${formatDate(lease.start_date, 'M j, Y')} – ${formatDate(lease.end_date, 'M j, Y')}`} />
-        <Fact label="Monthly rent" value={peso(lease.monthly_rent)} />
+        {lease.type === 'rent_to_own' && <Fact label="Contract price" value={`${peso(lease.contract_price)} · ${lease.term_years} yrs`} />}
+        {lease.type === 'rent_to_own' && lease.interest_rate !== null && <Fact label="Interest rate" value={`${Number(lease.interest_rate)}% per year`} />}
+        <Fact label={lease.type === 'rent_to_own' ? 'Monthly payment' : 'Monthly rent'} value={peso(lease.monthly_rent)} />
+        {lease.payment_interval_months > 1 && <Fact label="Payment terms" value={`${peso(lease.amount_per_payment)} ${lease.payment_terms.toLowerCase()}`} />}
         <Fact label="Deposit" value={peso(lease.deposit)} />
         <div className="ml-auto flex flex-wrap gap-2">
           {lease.can_renew && <button type="button" className="secondary-button compact cursor-pointer" onClick={() => setOpen(open === 'renew' ? null : 'renew')}>Renew</button>}

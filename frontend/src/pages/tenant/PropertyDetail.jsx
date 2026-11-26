@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router';
 import { usePageTitle } from '../../components/AppLayout';
-import { BackLink, BusyButton, Field, LoadError, PageSkeleton } from '../../components/ui';
+import { BackLink, BusyButton, Field, LoadError, PageSkeleton, UnitTerms } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useFlash } from '../../context/FlashContext';
 import { useApi } from '../../hooks/useApi';
@@ -91,9 +91,10 @@ function PropertyDetailView({ data }) {
                   <div className="flex-1">
                     <strong className="block text-sm text-slate-900">{unit.name}</strong>
                     <span className="block text-xs font-normal text-slate-500">{unitSummary(unit)}</span>
+                    <UnitTerms unit={unit} />
                   </div>
                   <div className="text-right">
-                    <strong className="block text-sm text-slate-900">{peso(unit.monthly_rent)}<span className="text-[11px] font-normal text-slate-400">/mo</span></strong>
+                    <strong className="block text-sm text-slate-900">{peso(unit.monthly_rent)}<span className="text-[11px] font-normal text-slate-400">{unit.listing_type === 'rent_to_own' ? '/mo payment' : '/mo'}</span></strong>
                     {applied ? <span className="text-[11px] font-bold text-amber-600">You applied</span>
                       : unit.is_vacant ? <span className="text-[11px] font-bold text-emerald-600">Vacant</span>
                         : <span className="text-[11px] font-bold text-slate-400">Occupied</span>}

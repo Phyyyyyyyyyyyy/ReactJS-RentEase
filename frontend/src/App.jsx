@@ -20,6 +20,7 @@ import PropertyManage from './pages/owner/PropertyManage';
 import { UnitCreate, UnitEdit } from './pages/owner/UnitForm';
 import Profile from './pages/Profile';
 import Receipt from './pages/Receipt';
+import Statement from './pages/Statement';
 import ProfileEdit from './pages/ProfileEdit';
 import Browse from './pages/tenant/Browse';
 import EditApplication from './pages/tenant/EditApplication';
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="/payments/:id/online" element={role(['tenant'], <OnlinePay />)} />
         <Route path="/payments/checkout/:code" element={role(['tenant'], <Checkout />)} />
         <Route path="/payments/receipt/:id" element={role(['tenant', 'owner', 'manager'], <Receipt />)} />
+        <Route path="/payments/statement/:id" element={role(['tenant', 'owner', 'manager'], <Statement />)} />
 
         {/* Property owner (and Property Manager, for the properties they manage) */}
         <Route path="/owner/properties" element={role(['owner', 'manager'], <PropertyList />)} />

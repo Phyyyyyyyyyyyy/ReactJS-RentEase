@@ -15,8 +15,8 @@ import { endpoint, fail, notFound, reply } from '../lib/http.js';
 import { iso, money, nowIso, peso, today } from '../lib/format.js';
 import { notify, runnersOfUnit } from '../notifications.js';
 import { displayName, userBrief } from '../users.js';
+import { METHOD_LABEL } from './payments.js';
 
-const METHOD_LABEL = { gcash: 'GCash', cash: 'Cash (in person)', bank: 'Bank transfer', other: 'Other' };
 
 export default function gcashRoutes(db, { gateway = defaultGateway() } = {}) {
   const router = Router();

@@ -11,7 +11,7 @@
  * right away. Confirmed money pays off the oldest month first, and anything
  * extra is credit for future months.
  */
-import { localDate, nowIso, today } from './lib/format.js';
+import { addDays, addMonths, localDate, nowIso, today } from './lib/format.js';
 
 export const monthStart = (date) => `${date.slice(0, 8)}01`;
 
@@ -19,6 +19,13 @@ export function monthEnd(date) {
   const [y, m] = date.split('-').map(Number);
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return `${date.slice(0, 8)}${String(lastDay).padStart(2, '0')}`;
+}
+
+/** Whole months from one month-start date to another ('2026-01-01' -> '2026-03-01' = 2). */
+export function monthsBetween(from, to) {
+  const [y1, m1] = from.split('-').map(Number);
+  const [y2, m2] = to.split('-').map(Number);
+  return (y2 - y1) * 12 + (m2 - m1);
 }
 
 export function nextMonth(date) {
@@ -49,7 +56,10 @@ const TENANCY_SELECT = `
     ${PERSON('t')}, ${PERSON('o')},
     o.gcash_name AS o_gcash_name, o.gcash_number AS o_gcash_number, o.gcash_qr AS o_gcash_qr,
     l.id AS lease_id, l.start_date AS lease_start, l.end_date AS lease_end, l.monthly_rent AS lease_rent,
-    l.deposit AS lease_deposit, l.status AS lease_status, l.terminated_at AS lease_terminated_at
+    l.deposit AS lease_deposit, l.status AS lease_status, l.terminated_at AS lease_terminated_at,
+    l.lease_type AS lease_type, l.contract_price AS lease_contract_price, l.term_years AS lease_term_years,
+    l.interest_rate_bp AS lease_interest_rate_bp, l.reservation_fee AS lease_reservation_fee,
+    l.payment_interval_months AS lease_interval
   FROM applications a
   JOIN units u ON u.id = a.unit_id
   JOIN properties p ON p.id = u.property_id
@@ -71,6 +81,9 @@ function tenancyFromRow(r) {
   const lease = r.lease_id ? {
     id: r.lease_id, start_date: r.lease_start, end_date: r.lease_end, monthly_rent: r.lease_rent,
     deposit: r.lease_deposit, status: r.lease_status, terminated_at: r.lease_terminated_at,
+    lease_type: r.lease_type, contract_price: r.lease_contract_price, term_years: r.lease_term_years,
+    interest_rate_bp: r.lease_interest_rate_bp, reservation_fee: r.lease_reservation_fee,
+    payment_interval_months: r.lease_interval || 1,
   } : null;
   return {
     id: r.id,
@@ -82,6 +95,8 @@ function tenancyFromRow(r) {
     lease,
     start: lease ? lease.start_date : tenancyStart(r),
     rent: lease ? lease.monthly_rent : r.unit_rent,
+    // Payment terms: a bill every `interval` months, each covering that many months.
+    interval: lease ? lease.payment_interval_months : 1,
     tenant: person(r, 't', r.tenant_id),
     owner: person(r, 'o', r.owner_id),
     unit: { id: r.unit_id, name: r.unit_name, monthly_rent: r.unit_rent, status: r.unit_status },
@@ -132,23 +147,39 @@ export const isActive = (tenancy, latest, day = today()) =>
   && (!tenancy.lease || leaseState(tenancy.lease, day) === 'active');
 
 /**
- * Create any missing monthly charges from the tenancy's first month up to this
- * month, or up to the lease's last month if it has ended.
+ * The last calendar month a lease is billed for. Billing is by calendar month,
+ * so a lease that runs a whole number of months from a mid-month start
+ * (Nov 26 – Nov 25) ends with the month before its end month: 12 bills, not 13.
+ * A lease ended on any other day (e.g. terminated) is billed for the month it ended in.
+ */
+export function lastBillingMonth(startDate, endDate) {
+  const next = addDays(endDate, 1);
+  const months = monthsBetween(monthStart(startDate), monthStart(next));
+  return months > 0 && addMonths(startDate, months) === next ? addMonths(monthStart(next), -1) : monthStart(endDate);
+}
+
+/**
+ * Create any missing charges from the tenancy's first month up to this month,
+ * or up to the lease's last billing month if it has ended.
  */
 export async function syncCharges(db, tenancy, day = today()) {
   const start = tenancy.start;
   if (!start || start > day) return;
   if (tenancy.lease && tenancy.lease.end_date < start) return; // ended before it began
-  const last = tenancy.lease && tenancy.lease.end_date < day ? tenancy.lease.end_date : day;
+  const finalMonth = tenancy.lease ? lastBillingMonth(start, tenancy.lease.end_date) : null;
+  const last = finalMonth && finalMonth < monthStart(day) ? finalMonth : monthStart(day);
   const existing = new Set((await db.all('SELECT period FROM rent_charges WHERE tenancy_id = ?', [tenancy.id]))
     .map((r) => r.period));
   const created = nowIso();
-  for (let period = monthStart(start); period <= last; period = nextMonth(period)) {
+  const interval = tenancy.interval || 1;
+  for (let period = monthStart(start); period <= last; period = addMonths(period, interval)) {
     if (existing.has(period)) continue;
+    // The last bill of a lease only covers the months left in it.
+    const months = finalMonth ? Math.min(interval, monthsBetween(period, finalMonth) + 1) : interval;
     await db.run(
-      `INSERT INTO rent_charges (tenancy_id, period, amount, due_date, created_at) VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO rent_charges (tenancy_id, period, amount, due_date, created_at, months) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT DO NOTHING`,
-      [tenancy.id, period, tenancy.rent, monthEnd(period), created],
+      [tenancy.id, period, tenancy.rent * months, monthEnd(period), created, months],
     );
   }
 }
@@ -163,7 +194,8 @@ export async function buildLedger(db, tenancy, { active = true, day = today() } 
   const totals = {};
   const counts = {};
   for (const row of await db.all(
-    'SELECT status, SUM(amount) AS total, COUNT(*) AS n FROM payments WHERE tenancy_id = ? GROUP BY status',
+    // Reservation payments go toward a rent-to-own contract price, not the monthly bills.
+    "SELECT status, SUM(amount) AS total, COUNT(*) AS n FROM payments WHERE tenancy_id = ? AND kind <> 'reservation' GROUP BY status",
     [tenancy.id],
   )) {
     totals[row.status] = Number(row.total);
@@ -207,11 +239,11 @@ export async function buildLedger(db, tenancy, { active = true, day = today() } 
     credit,
     overdue: lines.filter((l) => l.state === 'overdue').reduce((sum, l) => sum + l.remaining, 0),
     // This month's line, if the tenancy has started.
-    current: last && last.charge.period === monthStart(day) ? last : null,
+    current: last && last.charge.period <= monthStart(day) && addMonths(last.charge.period, last.charge.months || 1) > monthStart(day) ? last : null,
     // How many future months the credit pays for at the current rent.
     months_covered: rent ? Math.floor(credit / rent) : 0,
     // Prefill for a payment form: the balance, or one month's rent if nothing is owed (paying ahead).
-    suggested_amount: balance || rent,
+    suggested_amount: balance || rent * (tenancy.interval || 1),
   };
 }
 

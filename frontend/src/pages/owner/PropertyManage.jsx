@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { usePageTitle } from '../../components/AppLayout';
 import Icon from '../../components/Icon';
-import { BackLink, BusyButton, LoadError, PageSkeleton, PingDot } from '../../components/ui';
+import { BackLink, BusyButton, LoadError, PageSkeleton, PingDot, UnitTerms } from '../../components/ui';
 import { useFlash } from '../../context/FlashContext';
 import { useAction } from '../../hooks/useAction';
 import { useApi } from '../../hooks/useApi';
@@ -56,8 +56,9 @@ export default function PropertyManage() {
               <div className="min-w-40 flex-1">
                 <strong className="block text-sm text-slate-900">{unit.name}</strong>
                 <span className="block text-xs text-slate-500">{unitSummary(unit)}</span>
+                    <UnitTerms unit={unit} />
               </div>
-              <strong className="text-sm text-slate-900">{peso(unit.monthly_rent)}<span className="text-[11px] font-normal text-slate-400">/mo</span></strong>
+              <strong className="text-sm text-slate-900">{peso(unit.monthly_rent)}<span className="text-[11px] font-normal text-slate-400">{unit.listing_type === 'rent_to_own' ? '/mo payment' : '/mo'}</span></strong>
               {unit.is_vacant
                 ? <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">Vacant</span>
                 : <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600">Occupied</span>}

@@ -17,13 +17,25 @@ import { acceptsGcash, displayName, userBrief } from '../users.js';
 import { notify, runnersOfUnit } from '../notifications.js';
 import { RUNNERS, RUNS } from './properties.js';
 
+// Mode of payment.
 export const PAYMENT_METHODS = [
   ['gcash', 'GCash'],
   ['cash', 'Cash (in person)'],
+  ['check', 'Check deposit'],
+  ['online_bank', 'Online bank deposit'],
   ['bank', 'Bank transfer'],
   ['other', 'Other'],
 ];
-const METHOD_LABEL = Object.fromEntries(PAYMENT_METHODS);
+export const METHOD_LABEL = Object.fromEntries(PAYMENT_METHODS);
+
+// What the payment is for. Reservation payments count toward a rent-to-own
+// contract price but not toward the regular (monthly) bills.
+export const PAYMENT_KINDS = [
+  ['monthly', 'Rent payment'],
+  ['reservation', 'Reservation payment'],
+  ['other', 'Other payment'],
+];
+export const KIND_LABEL = Object.fromEntries(PAYMENT_KINDS);
 const STATUS_LABEL = { pending: 'Awaiting confirmation', confirmed: 'Confirmed', rejected: 'Rejected' };
 
 // GCash reference numbers are 13 digits (shown on the receipt after sending money).
@@ -97,6 +109,8 @@ function paymentJson(p, user) {
     amount: money(p.amount),
     method: p.method,
     method_display: METHOD_LABEL[p.method],
+    kind: p.kind || 'monthly',
+    kind_display: KIND_LABEL[p.kind || 'monthly'],
     reference_number: p.reference_number,
     proof: fileUrl(p.proof),
     paid_on: p.paid_on,
@@ -279,6 +293,7 @@ export default function paymentsRoutes(db, { mediaDir }) {
       const form = new Form(req.body);
       const amount = form.money('amount', { min: 1 });
       const method = form.choice('method', PAYMENT_METHODS);
+      const kind = form.has('kind') ? form.choice('kind', PAYMENT_KINDS) : 'monthly';
       const date = paidOn(form);
       const reference = form.text('reference_number', { required: false, max: 20 });
       const note = form.text('note', { required: false, max: 255 });
@@ -291,9 +306,9 @@ export default function paymentsRoutes(db, { mediaDir }) {
       try {
         await db.insert(
           `INSERT INTO payments (tenancy_id, amount, method, reference_number, paid_on, note, status, recorded_by_id,
-             reviewed_at, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
-          [tenancy.id, amount, method, reference, date, note, req.user.id, now, now],
+             reviewed_at, created_at, kind)
+           VALUES (?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)`,
+          [tenancy.id, amount, method, reference, date, note, req.user.id, now, now, kind],
         );
       } catch (error) {
         if (isUniqueViolation(error)) throw formErrors({ reference_number: [duplicate] });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useFlash } from '../context/FlashContext';
+import { peso } from '../lib/format';
 import Icon from './Icon';
 
 export function Avatar({ user, className = 'avatar' }) {
@@ -199,3 +200,25 @@ export const CARD_GRADIENTS = [
   'bg-gradient-to-br from-teal-800 to-teal-500',
   'bg-gradient-to-br from-amber-800 to-amber-500',
 ];
+
+/** "Rent-to-own · ₱3,000,000 over 12 yrs · Every 2 months" under a unit's name. */
+export function UnitTerms({ unit }) {
+  const rentToOwn = unit.listing_type === 'rent_to_own';
+  if (!rentToOwn && (unit.payment_interval_months || 1) === 1) return null;
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+      {rentToOwn && (
+        <span className="rounded-full bg-violet-50 px-2 py-0.5 font-bold text-violet-700">
+          Rent-to-own · {peso(unit.contract_price)} over {unit.term_years} yr{Number(unit.term_years) === 1 ? '' : 's'}
+          {unit.interest_rate !== null && unit.interest_rate !== undefined && ` · ${Number(unit.interest_rate)}%/yr`}
+        </span>
+      )}
+      {rentToOwn && Number(unit.reservation_fee) > 0 && (
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">Reservation {peso(unit.reservation_fee)}</span>
+      )}
+      {(unit.payment_interval_months || 1) > 1 && (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">{unit.payment_terms}</span>
+      )}
+    </span>
+  );
+}

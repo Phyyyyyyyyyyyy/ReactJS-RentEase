@@ -223,6 +223,28 @@ export const ADDED_COLUMNS = [
     column: 'manager_id',
     type: '{REF} REFERENCES users (id) ON DELETE SET NULL',
   },
+  // Rent or rent-to-own, per unit. For rent-to-own, monthly_rent is the monthly
+  // payment, and these hold the contract: price, term in years, yearly interest
+  // rate in basis points (5% = 500, for reference), and the reservation fee.
+  { table: 'units', column: 'listing_type', type: "TEXT NOT NULL DEFAULT 'rent'" },
+  { table: 'units', column: 'contract_price', type: '{MONEY}' },
+  { table: 'units', column: 'term_years', type: 'INTEGER' },
+  { table: 'units', column: 'interest_rate_bp', type: 'INTEGER' },
+  { table: 'units', column: 'reservation_fee', type: '{MONEY} NOT NULL DEFAULT 0' },
+  // A lease keeps the contract terms it was approved with, even if the unit changes later.
+  { table: 'leases', column: 'lease_type', type: "TEXT NOT NULL DEFAULT 'rent'" },
+  { table: 'leases', column: 'contract_price', type: '{MONEY}' },
+  { table: 'leases', column: 'term_years', type: 'INTEGER' },
+  { table: 'leases', column: 'interest_rate_bp', type: 'INTEGER' },
+  { table: 'leases', column: 'reservation_fee', type: '{MONEY} NOT NULL DEFAULT 0' },
+  // What a payment is for: the monthly payment, the reservation fee, or something else.
+  { table: 'payments', column: 'kind', type: "TEXT NOT NULL DEFAULT 'monthly'" },
+  // Payment terms: pay every N months (1 = monthly, 2 = every 2 months...). monthly_rent
+  // stays the monthly rate; each bill covers N months (N x the monthly rate).
+  { table: 'units', column: 'payment_interval_months', type: 'INTEGER NOT NULL DEFAULT 1' },
+  { table: 'leases', column: 'payment_interval_months', type: 'INTEGER NOT NULL DEFAULT 1' },
+  // How many months a bill covers.
+  { table: 'rent_charges', column: 'months', type: 'INTEGER NOT NULL DEFAULT 1' },
 ];
 
 /** Data changes that are safe to run on every start (they do nothing once applied). */

@@ -26,6 +26,15 @@ const TYPE_LABEL = Object.fromEntries(PROPERTY_TYPES);
 
 export const UNIT_STATUSES = [['vacant', 'Vacant'], ['occupied', 'Occupied']];
 
+export const LISTING_TYPES = [['rent', 'For rent'], ['rent_to_own', 'Rent-to-own']];
+const LISTING_LABEL = Object.fromEntries(LISTING_TYPES);
+
+/** "Monthly", "Every 2 months", ... */
+export const intervalLabel = (months) => (!months || months === 1 ? 'Monthly' : `Every ${months} months`);
+
+/** 500 basis points -> "5.00" (percent per year). */
+export const percent = (bp) => (bp === null || bp === undefined ? null : money(bp));
+
 export const APPLICATION_STATUSES = [
   ['pending', 'Pending'],
   ['approved', 'Approved'],
@@ -89,7 +98,19 @@ export function unitJson(u) {
     monthly_rent: money(u.monthly_rent),
     status: u.status,
     is_vacant: u.status === 'vacant',
+    listing_type: u.listing_type || 'rent',
+    listing_display: LISTING_LABEL[u.listing_type || 'rent'],
+    payment_interval_months: u.payment_interval_months || 1,
+    payment_terms: intervalLabel(u.payment_interval_months),
   };
+  if (u.listing_type === 'rent_to_own') {
+    Object.assign(data, {
+      contract_price: money(u.contract_price),
+      term_years: u.term_years,
+      interest_rate: percent(u.interest_rate_bp),
+      reservation_fee: money(u.reservation_fee),
+    });
+  }
   if ('pending_count' in u) data.pending_count = Number(u.pending_count);
   return data;
 }
@@ -177,7 +198,8 @@ async function cleanProperty(db, body, ownerId, exceptId = 0) {
 
 const DUPLICATE_PROPERTY = () => formErrors({ non_field_errors: ['You already have a property with this name at this address.'] });
 
-async function cleanUnit(db, body, propertyId, exceptId = 0) {
+async function cleanUnit(db, body, propertyId, current = null) {
+  const exceptId = current ? current.id : 0;
   const form = new Form(body);
   const values = {
     name: form.text('name', { max: 100 }),
@@ -186,14 +208,39 @@ async function cleanUnit(db, body, propertyId, exceptId = 0) {
     floor_area: form.integer('floor_area', { min: 0, max: 2147483647 }),
     monthly_rent: form.money('monthly_rent'),
     status: form.choice('status', UNIT_STATUSES),
+    // Editing without sending a type keeps the unit's current one.
+    listing_type: form.has('listing_type') ? form.choice('listing_type', LISTING_TYPES) : (current?.listing_type || 'rent'),
+    contract_price: null,
+    term_years: null,
+    interest_rate_bp: null,
+    reservation_fee: 0,
+    // Payment terms: pay every N months (1 to 12). Editing without it keeps the current terms.
+    payment_interval_months: form.has('payment_interval_months')
+      ? form.integer('payment_interval_months', { min: 1, max: 12 })
+      : (current?.payment_interval_months || 1),
   };
+  // Rent-to-own units also need the contract terms. monthly_rent is then the monthly payment.
+  if (values.listing_type === 'rent_to_own') {
+    values.contract_price = form.money('contract_price', { min: 1 });
+    values.term_years = form.integer('term_years', { min: 1, max: 50 });
+    // Stored in basis points (5% = 500); recorded for reference, not used to compute payments.
+    values.interest_rate_bp = form.money('interest_rate', { required: false, min: 0 });
+    if (values.interest_rate_bp !== null && form.ok('interest_rate') && values.interest_rate_bp > 10000) {
+      form.error('interest_rate', 'Ensure this value is less than or equal to 100.');
+    }
+    values.reservation_fee = form.money('reservation_fee', { required: false, min: 0 }) ?? 0;
+    if (values.contract_price && values.monthly_rent && form.ok('contract_price') && form.ok('monthly_rent')
+      && values.monthly_rent > values.contract_price) {
+      form.error('monthly_rent', 'The monthly payment can’t be more than the contract price.');
+    }
+  }
   if (values.name && form.ok('name')) {
     const clash = await db.get('SELECT 1 AS x FROM units WHERE property_id = ? AND LOWER(name) = LOWER(?) AND id <> ?',
       [propertyId, values.name, exceptId]);
     if (clash) form.error('name', 'This property already has a unit with that name.');
   }
   if (values.monthly_rent !== null && form.ok('monthly_rent') && values.monthly_rent <= 0) {
-    form.error('monthly_rent', 'Monthly rent must be greater than zero.');
+    form.error('monthly_rent', values.listing_type === 'rent_to_own' ? 'The monthly payment must be greater than zero.' : 'Monthly rent must be greater than zero.');
   }
   form.check();
   return values;
@@ -497,9 +544,12 @@ export default function propertiesRoutes(db) {
       let unitId;
       try {
         unitId = await db.insert(
-          `INSERT INTO units (property_id, name, bedrooms, bathrooms, floor_area, monthly_rent, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [prop.id, values.name, values.bedrooms, values.bathrooms, values.floor_area, values.monthly_rent, values.status],
+          `INSERT INTO units (property_id, name, bedrooms, bathrooms, floor_area, monthly_rent, status, listing_type,
+             contract_price, term_years, interest_rate_bp, reservation_fee, payment_interval_months)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [prop.id, values.name, values.bedrooms, values.bathrooms, values.floor_area, values.monthly_rent, values.status,
+            values.listing_type, values.contract_price, values.term_years, values.interest_rate_bp, values.reservation_fee,
+            values.payment_interval_months],
         );
       } catch (error) {
         if (isUniqueViolation(error)) throw DUPLICATE_UNIT();
@@ -528,12 +578,16 @@ export default function propertiesRoutes(db) {
     },
     PUT: async (req) => {
       const unit = await ownUnit(req);
-      const values = await cleanUnit(db, req.body, unit.property_id, unit.id);
+      const values = await cleanUnit(db, req.body, unit.property_id, unit);
       try {
         await db.run(
-          `UPDATE units SET name = ?, bedrooms = ?, bathrooms = ?, floor_area = ?, monthly_rent = ?, status = ?
+          `UPDATE units SET name = ?, bedrooms = ?, bathrooms = ?, floor_area = ?, monthly_rent = ?, status = ?,
+             listing_type = ?, contract_price = ?, term_years = ?, interest_rate_bp = ?, reservation_fee = ?,
+             payment_interval_months = ?
            WHERE id = ?`,
-          [values.name, values.bedrooms, values.bathrooms, values.floor_area, values.monthly_rent, values.status, unit.id],
+          [values.name, values.bedrooms, values.bathrooms, values.floor_area, values.monthly_rent, values.status,
+            values.listing_type, values.contract_price, values.term_years, values.interest_rate_bp, values.reservation_fee,
+            values.payment_interval_months, unit.id],
         );
       } catch (error) {
         if (isUniqueViolation(error)) throw DUPLICATE_UNIT();
@@ -596,8 +650,9 @@ export default function propertiesRoutes(db) {
           "UPDATE applications SET status = 'approved', approved_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
           [now, now, a.id]);
         if (!approved.changes) throw notPending();
-        // The approval creates the lease (12 months from move-in, at the unit's current rent).
-        await createLease(t, { id: a.id, approved_at: now, preferred_move_in: a.preferred_move_in }, a.unit_rent);
+        // The approval creates the lease from the unit's current terms (rent: 12 months; rent-to-own: the contract term).
+        const unitRow = await t.get('SELECT * FROM units WHERE id = ?', [a.unit_id]);
+        await createLease(t, { id: a.id, approved_at: now, preferred_move_in: a.preferred_move_in }, unitRow);
         await notify(t, a.tenant_id, 'application',
           `Your application for ${a.property_name} ${a.unit_name} was approved! Your lease and rent are on the Rent & Payments page.`, '/payments');
         // The unit is taken now, so every other pending application for it is rejected.

@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { usePageTitle } from '../../components/AppLayout';
 import Icon from '../../components/Icon';
 import { LeaseManager } from '../../components/lease';
@@ -9,7 +9,7 @@ import { useAction } from '../../hooks/useAction';
 import { useApi } from '../../hooks/useApi';
 import { useForm } from '../../hooks/useForm';
 import { api } from '../../lib/api';
-import { PAYMENT_METHODS } from '../../lib/constants';
+import { PAYMENT_KINDS, PAYMENT_METHODS } from '../../lib/constants';
 import { formatDate, peso, plural, positive } from '../../lib/format';
 import { useFlash } from '../../context/FlashContext';
 
@@ -32,7 +32,7 @@ function TenancyView({ data, reload }) {
   const { run, busyKey } = useAction();
   const amountRef = useRef(null);
   const recordRef = useRef(null);
-  const form = useForm({ amount: ledger.suggested_amount, method: 'cash', paid_on: data.today, reference_number: '', note: '' });
+  const form = useForm({ amount: ledger.suggested_amount, kind: 'monthly', method: 'cash', paid_on: data.today, reference_number: '', note: '' });
   const { bind, errors } = form;
 
   const fillAmount = (amount) => {
@@ -68,11 +68,14 @@ function TenancyView({ data, reload }) {
           <span className="text-[11px] font-extrabold uppercase tracking-widest text-brand">{t.unit.property.name} · {t.unit.name}</span>
           <h1 className="m-0 mt-0.5 text-2xl font-bold tracking-tight text-slate-900">{t.tenant.full_name}</h1>
           <p className="m-0 mt-0.5 text-sm text-slate-500">
-            {peso(t.lease?.monthly_rent ?? t.unit.monthly_rent)}/month · renting since {formatDate(t.tenancy_start, 'M j, Y')}
+            {peso(t.lease?.monthly_rent ?? t.unit.monthly_rent)}/month{t.lease && t.lease.payment_interval_months > 1 && ` (${peso(t.lease.amount_per_payment)} ${t.lease.payment_terms.toLowerCase()})`} · since {formatDate(t.tenancy_start, 'M j, Y')}
             {t.tenant.phone && ` · ${t.tenant.phone}`}
             {!ledger.active && <> · <strong>tenancy ended</strong></>}
           </p>
         </div>
+        <Link to={`/payments/statement/${t.id}`} className="secondary-button ml-auto inline-flex items-center gap-2">
+          <Icon name="receipt" size={16} />Statement of account
+        </Link>
       </div>
 
       {t.lease && <LeaseManager lease={t.lease} unitName={t.unit.name} onChange={reload} />}
@@ -101,7 +104,7 @@ function TenancyView({ data, reload }) {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <section className="grid content-start gap-3 rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="m-0 text-base font-bold text-slate-900">Monthly rent</h2>
+          <h2 className="m-0 text-base font-bold text-slate-900">{t.lease && t.lease.payment_interval_months > 1 ? `Bills (${t.lease.payment_terms.toLowerCase()})` : 'Monthly rent'}</h2>
           <p className="m-0 -mt-1 text-xs text-slate-500">
             Payments are applied to the oldest unpaid month first. “Mark paid” fills in the amount that settles everything up to that month.
           </p>
@@ -116,11 +119,17 @@ function TenancyView({ data, reload }) {
           </p>
           <form className="form-stack" onSubmit={onSubmit} noValidate>
             <FormErrors errors={errors} />
+            <Field label="Payment for" error={errors.kind}
+              help={form.values.kind === 'reservation' ? 'Counts toward the rent-to-own contract price, not the regular bills.' : undefined}>
+              <select {...bind('kind')}>
+                {PAYMENT_KINDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </Field>
             <div className="form-grid two">
               <Field label="Amount received (₱)" error={errors.amount}>
                 <input {...bind('amount')} ref={amountRef} type="number" step="0.01" min="1" />
               </Field>
-              <Field label="Method" error={errors.method}>
+              <Field label="Mode of payment" error={errors.method}>
                 <select {...bind('method')}>
                   {PAYMENT_METHODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
@@ -128,7 +137,7 @@ function TenancyView({ data, reload }) {
             </div>
             <div className="form-grid two">
               <Field label="Date received" error={errors.paid_on}><input {...bind('paid_on')} type="date" max={data.today} /></Field>
-              <Field label="Reference / receipt no." optional error={errors.reference_number}>
+              <Field label="Check / reference no." optional error={errors.reference_number}>
                 <input {...bind('reference_number')} maxLength={20} />
               </Field>
             </div>

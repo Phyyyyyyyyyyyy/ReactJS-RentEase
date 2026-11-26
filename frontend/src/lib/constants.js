@@ -14,12 +14,30 @@ export const UNIT_STATUSES = [
   ['occupied', 'Occupied'],
 ];
 
+// Mode of payment.
 export const PAYMENT_METHODS = [
-  ['gcash', 'GCash'],
   ['cash', 'Cash (in person)'],
+  ['check', 'Check deposit'],
+  ['online_bank', 'Online bank deposit'],
+  ['gcash', 'GCash'],
   ['bank', 'Bank transfer'],
   ['other', 'Other'],
 ];
+
+// What a payment is for. Reservation payments count toward a rent-to-own contract, not the regular bills.
+export const PAYMENT_KINDS = [
+  ['monthly', 'Rent payment'],
+  ['reservation', 'Reservation payment'],
+  ['other', 'Other payment'],
+];
+
+export const LISTING_TYPES = [
+  ['rent', 'For rent'],
+  ['rent_to_own', 'Rent-to-own'],
+];
+
+/** Payment terms: pay every N months. */
+export const PAYMENT_INTERVALS = Array.from({ length: 12 }, (_, i) => [i + 1, i === 0 ? 'Monthly' : `Every ${i + 1} months`]);
 
 export const ROLES = [
   ['admin', 'Admin'],

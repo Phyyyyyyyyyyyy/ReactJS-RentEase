@@ -87,6 +87,9 @@ function LedgerCard({ ledger }) {
             {peso(t.lease?.monthly_rent ?? t.unit.monthly_rent)}/month · Owner: {owner.full_name}{owner.phone && ` · ${owner.phone}`}
           </p>
           <div className="mt-1.5"><LeaseSummary lease={t.lease} /></div>
+          <Link to={`/payments/statement/${t.id}`} className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-brand no-underline hover:underline">
+            <Icon name="receipt" size={14} />Statement of account
+          </Link>
         </div>
         {(balance || ledger.active) && (
           <div className="flex flex-wrap gap-2">
