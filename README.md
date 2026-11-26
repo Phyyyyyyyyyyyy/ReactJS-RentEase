@@ -128,6 +128,8 @@ npm test
 - **Applications**: approve or reject. Approving creates a **12-month lease** at the unit's rent, marks the unit occupied, and rejects the other pending applications for it.
 - **Leases**: renew (new end date, optionally a new rent for months not billed yet), terminate (rent stops after this month and the unit becomes vacant), and set the deposit.
 - **Rent Payments**: confirm or reject tenants' GCash payments, record cash/bank/other payments (they count immediately), "Mark paid" shortcuts per month, void mistakes, and print receipts.
+- **Rent-to-own and payment terms**: each unit is For rent or Rent-to-own (contract price, term, interest rate for reference, reservation fee) and is paid monthly or every 2–12 months. Leases keep the terms they were approved with; reservation payments count toward the contract, not the regular bills. Each tenancy has a printable **Statement of account** (CSV too).
+- **Payment logs** (per unit): the owner's own spreadsheet-style record for buyers or tenants who don't use the app, e.g. a rent-to-own contract from 2019. Add entries (date, description, amount, mode, reference) or **import the Excel sheet saved as CSV** with a preview; titles and totals are skipped and re-importing doesn't double up. Shows total paid and remaining balance; print or download as CSV.
 - **Finances**: record expenses per property (repairs, utilities, taxes...), and see rent received, expenses, and net income per property for any period, with CSV export.
 - **Notifications** for new applications and GCash payments to confirm.
 

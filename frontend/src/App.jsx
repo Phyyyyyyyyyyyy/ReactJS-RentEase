@@ -12,6 +12,8 @@ import NotFound from './pages/NotFound';
 import Notifications from './pages/Notifications';
 import Finances from './pages/owner/Finances';
 import OwnerApplications from './pages/owner/OwnerApplications';
+import PaymentLog from './pages/owner/PaymentLog';
+import UnitLogs from './pages/owner/UnitLogs';
 import OwnerPayments from './pages/owner/OwnerPayments';
 import OwnerTenancy from './pages/owner/OwnerTenancy';
 import PropertyFormPage from './pages/owner/PropertyForm';
@@ -97,6 +99,8 @@ export default function App() {
         <Route path="/owner/applications" element={role(['owner', 'manager'], <OwnerApplications />)} />
         <Route path="/owner/payments" element={role(['owner', 'manager'], <OwnerPayments />)} />
         <Route path="/owner/finances" element={role(['owner'], <Finances />)} />
+        <Route path="/owner/units/:id/logs" element={role(['owner', 'manager'], <UnitLogs />)} />
+        <Route path="/owner/logs/:id" element={role(['owner', 'manager'], <PaymentLog />)} />
         <Route path="/owner/payments/tenancy/:id" element={role(['owner', 'manager'], <OwnerTenancy />)} />
 
         <Route path="*" element={<NotFound />} />

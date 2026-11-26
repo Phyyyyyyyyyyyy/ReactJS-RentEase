@@ -126,6 +126,36 @@ CREATE TABLE IF NOT EXISTS expenses (
 );
 CREATE INDEX IF NOT EXISTS expenses_property ON expenses (property_id, spent_on);
 
+-- Payment logs: the owner's own record of a unit's payments, like a spreadsheet
+-- (e.g. a rent-to-own buyer who doesn't use the app). One log per buyer/contract.
+CREATE TABLE IF NOT EXISTS unit_logs (
+  id {ID},
+  unit_id {REF} NOT NULL REFERENCES units (id) ON DELETE CASCADE,
+  holder_name TEXT NOT NULL,
+  start_date TEXT,
+  contract_price {MONEY},
+  term_years INTEGER,
+  interest_rate_bp INTEGER,
+  monthly_amount {MONEY},
+  note TEXT NOT NULL DEFAULT '',
+  created_by_id {REF} REFERENCES users (id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS unit_logs_unit ON unit_logs (unit_id);
+
+CREATE TABLE IF NOT EXISTS unit_log_entries (
+  id {ID},
+  log_id {REF} NOT NULL REFERENCES unit_logs (id) ON DELETE CASCADE,
+  entry_date TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  amount {MONEY} NOT NULL CHECK (amount > 0),
+  mode TEXT NOT NULL DEFAULT '',
+  reference TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS unit_log_entries_log ON unit_log_entries (log_id, entry_date);
+
 -- Online GCash checkouts (sandbox mode for now). id is the random code in the checkout link.
 CREATE TABLE IF NOT EXISTS gcash_checkouts (
   id TEXT PRIMARY KEY,

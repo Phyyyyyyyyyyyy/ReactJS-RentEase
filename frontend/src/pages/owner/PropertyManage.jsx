@@ -67,6 +67,9 @@ export default function PropertyManage() {
                   <PingDot label="Applications awaiting your review" />{unit.pending_count} pending
                 </Link>
               )}
+              <Link to={`/owner/units/${unit.id}/logs`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 no-underline hover:bg-slate-50">
+                <Icon name="file" size={14} />Payment log
+              </Link>
               {canEdit && <div className="flex gap-2">
                 <Link to={`/owner/properties/units/${unit.id}/edit`} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 no-underline hover:bg-slate-50">Edit</Link>
                 <BusyButton type="button" busy={busyKey === `delete-${unit.id}`} busyText="Deleting…" onClick={() => remove(unit)}
