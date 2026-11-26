@@ -15,10 +15,12 @@ export default function PaymentLog() {
   const { id } = useParams();
   const { data, error, reload } = useApi(`/owner/logs/${id}/`);
   usePageTitle('My Properties', data ? `Payment log · ${data.log.holder_name}` : 'Payment log');
-  const [panel, setPanel] = useState(null); // 'add' | 'import' | 'edit'
+  const [chosen, setPanel] = useState(undefined); // 'add' | 'import' | 'edit' | null
   if (error) return <LoadError error={error} />;
   if (!data) return <PageSkeleton />;
   const { log, unit, property, entries } = data;
+  // An empty log starts with the add form open.
+  const panel = chosen === undefined ? (entries.length === 0 ? 'add' : null) : chosen;
   const toggle = (name) => setPanel(panel === name ? null : name);
 
   return (
@@ -26,7 +28,7 @@ export default function PaymentLog() {
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <BackLink to={`/owner/units/${unit.id}/logs`}>{unit.name} payment logs</BackLink>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="primary-button cursor-pointer" onClick={() => toggle('add')}>+ Add payment</button>
+          <button type="button" className="primary-button cursor-pointer" onClick={() => toggle('add')}>+ Add custom payment</button>
           <button type="button" className="secondary-button cursor-pointer" onClick={() => toggle('import')}>Import CSV</button>
           <a className="secondary-button" href={`/api/owner/logs/${log.id}/export/`} download>Download CSV</a>
           <button type="button" className="secondary-button cursor-pointer" onClick={() => window.print()}>Print</button>
@@ -125,7 +127,8 @@ function AddEntry({ logId, onDone }) {
   };
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-sm print:hidden">
-      <h2 className="m-0 mb-4 text-base font-bold text-slate-900">Add a payment</h2>
+      <h2 className="m-0 mb-1 text-base font-bold text-slate-900">Add a custom payment</h2>
+      <p className="m-0 mb-4 text-xs text-slate-500">For any payment that isn't in the log yet, including old ones that were never recorded. Any date works.</p>
       <form className="form-stack" onSubmit={onSubmit} noValidate>
         <FormErrors errors={form.errors} />
         {ENTRY_FIELDS(form)}
