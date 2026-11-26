@@ -128,6 +128,7 @@ npm test
 - **Applications**: approve or reject. Approving creates a **12-month lease** at the unit's rent, marks the unit occupied, and rejects the other pending applications for it.
 - **Leases**: renew (new end date, optionally a new rent for months not billed yet), terminate (rent stops after this month and the unit becomes vacant), and set the deposit.
 - **Rent Payments**: confirm or reject tenants' GCash payments, record cash/bank/other payments (they count immediately), "Mark paid" shortcuts per month, void mistakes, and print receipts.
+- **Messages**: chat between a tenant and the people who run their property (owner and manager), one conversation per tenant + property, so payments, repairs, and move-in details are sorted out inside RentEase. Started with the Message buttons on applications and rent pages, only once the tenant has applied there; unread counts show in the sidebar; new messages appear within a few seconds.
 - **Finances**: record expenses per property (repairs, utilities, taxes...), and see rent received, expenses, and net income per property for any period, with CSV export.
 - **Notifications** for new applications and GCash payments to confirm.
 

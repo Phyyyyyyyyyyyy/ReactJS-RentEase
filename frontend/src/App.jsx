@@ -8,6 +8,7 @@ import UserList from './pages/admin/UserList';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import { AdminDashboard, ManagerDashboard, OwnerDashboard, TenantDashboard } from './pages/Dashboards';
+import Messages from './pages/Messages';
 import NotFound from './pages/NotFound';
 import Notifications from './pages/Notifications';
 import Finances from './pages/owner/Finances';
@@ -68,6 +69,8 @@ export default function App() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/edit" element={<ProfileEdit />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/messages" element={role(['tenant', 'owner', 'manager'], <Messages />)} />
+        <Route path="/messages/:id" element={role(['tenant', 'owner', 'manager'], <Messages />)} />
 
         {/* Admin */}
         <Route path="/admin/users" element={role(['admin'], <UserList />)} />

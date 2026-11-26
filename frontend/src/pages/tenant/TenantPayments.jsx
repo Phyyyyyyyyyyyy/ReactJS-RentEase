@@ -7,6 +7,7 @@ import { LeaseSummary } from '../../components/lease';
 import { useAction } from '../../hooks/useAction';
 import { useApi } from '../../hooks/useApi';
 import { formatDate, peso, plural, positive } from '../../lib/format';
+import { MessageButton } from '../../components/chat';
 
 export default function TenantPayments() {
   usePageTitle('Rent & Payments', 'Rent & payments');
@@ -90,6 +91,7 @@ function LedgerCard({ ledger }) {
           <Link to={`/payments/statement/${t.id}`} className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-brand no-underline hover:underline">
             <Icon name="receipt" size={14} />Statement of account
           </Link>
+          <span className="ml-3"><MessageButton property={t.unit.property.id} label="Message owner" /></span>
         </div>
         {(balance || ledger.active) && (
           <div className="flex flex-wrap gap-2">

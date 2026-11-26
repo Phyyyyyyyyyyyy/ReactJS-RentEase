@@ -4,6 +4,7 @@ import { ApplicationBadge, Avatar, BusyButton, EmptyState, LoadError, PageHeader
 import { useAction } from '../../hooks/useAction';
 import { useApi } from '../../hooks/useApi';
 import { formatDate, peso } from '../../lib/format';
+import { MessageButton } from '../../components/chat';
 
 export default function OwnerApplications() {
   usePageTitle('Applications');
@@ -53,6 +54,7 @@ export default function OwnerApplications() {
                       {app.status === 'pending' && !app.unit.is_vacant && <> · <span className="font-semibold text-red-600">Unit is now occupied</span></>}
                     </p>
                     {app.message && <p className="m-0 mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">“{app.message}”</p>}
+                    <div className="mt-2"><MessageButton property={app.unit.property.id} tenant={app.tenant.id} label="Message tenant" /></div>
                   </div>
                 </div>
                 {app.status === 'pending' && (

@@ -16,6 +16,7 @@ import referralsRoutes from './routes/referrals.js';
 import financesRoutes from './routes/finances.js';
 import gcashRoutes from './routes/gcash.js';
 import statementsRoutes from './routes/statements.js';
+import chatRoutes from './routes/chat.js';
 import leasesRoutes from './routes/leases.js';
 import notificationsRoutes from './routes/notifications.js';
 import paymentsRoutes from './routes/payments.js';
@@ -72,6 +73,7 @@ export function createApp(db, {
   api.use(paymentsRoutes(db, { mediaDir }));
   api.use(gcashRoutes(db, { gateway }));
   api.use(statementsRoutes(db));
+  api.use(chatRoutes(db, { limits }));
   api.use(leasesRoutes(db));
   api.use(financesRoutes(db));
   api.use(notificationsRoutes(db));

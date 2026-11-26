@@ -12,6 +12,7 @@ import { api } from '../../lib/api';
 import { PAYMENT_KINDS, PAYMENT_METHODS } from '../../lib/constants';
 import { formatDate, peso, plural, positive } from '../../lib/format';
 import { useFlash } from '../../context/FlashContext';
+import { MessageButton } from '../../components/chat';
 
 export default function OwnerTenancy() {
   usePageTitle('Rent Payments', 'Tenant rent');
@@ -76,6 +77,7 @@ function TenancyView({ data, reload }) {
         <Link to={`/payments/statement/${t.id}`} className="secondary-button ml-auto inline-flex items-center gap-2">
           <Icon name="receipt" size={16} />Statement of account
         </Link>
+        <MessageButton property={t.unit.property.id} tenant={t.tenant.id} label="Message tenant" className="secondary-button" />
       </div>
 
       {t.lease && <LeaseManager lease={t.lease} unitName={t.unit.name} onChange={reload} />}

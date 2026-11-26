@@ -5,6 +5,7 @@ import { ApplicationBadge, BusyButton, EmptyState, LoadError, PageHeader, PageSk
 import { useAction } from '../../hooks/useAction';
 import { useApi } from '../../hooks/useApi';
 import { formatDate, peso } from '../../lib/format';
+import { MessageButton } from '../../components/chat';
 
 export default function MyApplications() {
   usePageTitle('My Applications', 'My applications');
@@ -50,6 +51,7 @@ export default function MyApplications() {
                 </div>
                 <div className="flex gap-2 sm:flex-col sm:items-end">
                   <Link to={`/browse/${app.unit.property.id}`} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 no-underline hover:bg-slate-50">View property</Link>
+                  <MessageButton property={app.unit.property.id} label="Message owner" />
                   {app.can_withdraw && (
                     <>
                       <Link to={`/applications/${app.id}/edit`} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-brand no-underline hover:bg-blue-100">Edit</Link>

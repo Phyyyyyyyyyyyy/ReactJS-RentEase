@@ -61,6 +61,7 @@ export const ROLE_MENUS = {
     { to: '/owner/properties', label: 'My Properties', icon: 'building' },
     { to: '/owner/applications', label: 'Applications', icon: 'file', badge: 'pending_applications', badgeLabel: 'pending' },
     { to: '/owner/payments', label: 'Rent Payments', icon: 'wallet', badge: 'pending_payments', badgeLabel: 'to confirm' },
+    { to: '/messages', label: 'Messages', icon: 'chat', badge: 'unread_messages', badgeLabel: 'unread' },
     { to: '/owner/finances', label: 'Finances', icon: 'chart' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
   ],
@@ -69,6 +70,7 @@ export const ROLE_MENUS = {
     { to: '/browse', label: 'Browse Properties', icon: 'search' },
     { to: '/applications', label: 'My Applications', icon: 'file', badge: 'pending_applications', badgeLabel: 'pending' },
     { to: '/payments', label: 'Rent & Payments', icon: 'wallet' },
+    { to: '/messages', label: 'Messages', icon: 'chat', badge: 'unread_messages', badgeLabel: 'unread' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
   ],
   manager: [
@@ -76,6 +78,7 @@ export const ROLE_MENUS = {
     { to: '/owner/properties', label: 'Managed Properties', icon: 'building' },
     { to: '/owner/applications', label: 'Applications', icon: 'file', badge: 'pending_applications', badgeLabel: 'pending' },
     { to: '/owner/payments', label: 'Rent Payments', icon: 'wallet', badge: 'pending_payments', badgeLabel: 'to confirm' },
+    { to: '/messages', label: 'Messages', icon: 'chat', badge: 'unread_messages', badgeLabel: 'unread' },
     { to: '/profile', label: 'My Profile', icon: 'user' },
   ],
 };

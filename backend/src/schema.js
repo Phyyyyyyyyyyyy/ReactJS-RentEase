@@ -126,6 +126,34 @@ CREATE TABLE IF NOT EXISTS expenses (
 );
 CREATE INDEX IF NOT EXISTS expenses_property ON expenses (property_id, spent_on);
 
+-- Chat between a tenant and the people who run a property (its owner and manager).
+-- One conversation per tenant + property.
+CREATE TABLE IF NOT EXISTS conversations (
+  id {ID},
+  property_id {REF} NOT NULL REFERENCES properties (id) ON DELETE CASCADE,
+  tenant_id {REF} NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  last_message_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS conversations_pair ON conversations (property_id, tenant_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id {ID},
+  conversation_id {REF} NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+  sender_id {REF} REFERENCES users (id) ON DELETE SET NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation_id, id);
+
+-- The last message each person has seen in a conversation (for unread counts).
+CREATE TABLE IF NOT EXISTS conversation_reads (
+  conversation_id {REF} NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+  user_id {REF} NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  last_read_id {REF} NOT NULL DEFAULT 0,
+  PRIMARY KEY (conversation_id, user_id)
+);
+
 -- Online GCash checkouts (sandbox mode for now). id is the random code in the checkout link.
 CREATE TABLE IF NOT EXISTS gcash_checkouts (
   id TEXT PRIMARY KEY,

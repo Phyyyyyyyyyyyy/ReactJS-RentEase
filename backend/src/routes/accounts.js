@@ -7,6 +7,7 @@ import { Form } from '../lib/forms.js';
 import { endpoint, fail, formErrors, reply } from '../lib/http.js';
 import { findReferralCode } from '../referrals.js';
 import { remindTenant } from '../notifications.js';
+import { unreadMessages } from './chat.js';
 import { RUNS } from './properties.js';
 import { iso, money, nowIso } from '../lib/format.js';
 import { checkPassword, hashPassword, passwordProblems } from '../lib/passwords.js';
@@ -250,7 +251,10 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }
       }
       if (user.role === 'tenant') await remindTenant(db, user.id);
       const unread = await count(db, 'SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND is_read = 0', [user.id]);
-      return { pending_applications: pendingApplications, pending_payments: pendingPayments, unread_notifications: unread };
+      return {
+        pending_applications: pendingApplications, pending_payments: pendingPayments, unread_notifications: unread,
+        unread_messages: await unreadMessages(db, user),
+      };
     },
   });
 
