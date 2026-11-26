@@ -145,6 +145,32 @@ export function checkDatabaseUrl(url) {
   return parsed;
 }
 
+/**
+ * TLS for remote databases. Connections are always encrypted. The server's
+ * certificate is verified when a CA is supplied:
+ *   - DATABASE_CA_CERT: the CA certificate's PEM text (e.g. Supabase's, from
+ *     Project Settings > Database > SSL), handy on hosts like Render; or
+ *   - sslmode=verify-full / verify-ca with sslrootcert=<file> in the URI.
+ * Without one, the certificate isn't checked against public CAs, because
+ * Supabase's pooler uses its own CA that Node doesn't know and every connection
+ * would fail with "self-signed certificate in certificate chain".
+ */
+export function sslSettings(uri, local) {
+  if (local) return { connectionString: uri.href, ssl: false };
+  const ca = process.env.DATABASE_CA_CERT;
+  if (ca && ca.trim()) {
+    return { connectionString: uri.href, ssl: { ca: ca.replace(/\\n/g, '\n'), rejectUnauthorized: true } };
+  }
+  const mode = uri.searchParams.get('sslmode');
+  if (uri.searchParams.get('sslrootcert') && (mode === 'verify-full' || mode === 'verify-ca')) {
+    return { connectionString: uri.href }; // pg reads the CA file and verifies
+  }
+  // SSL options in the URI would override the setting below, so they're removed here.
+  const plain = new URL(uri.href);
+  for (const key of ['sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'ssl', 'uselibpqcompat']) plain.searchParams.delete(key);
+  return { connectionString: plain.href, ssl: { rejectUnauthorized: false } };
+}
+
 class PostgresDatabase {
   dialect = 'postgres';
 
@@ -156,8 +182,7 @@ class PostgresDatabase {
     pg.types.setTypeParser(1700, Number); // numeric
     const local = ['localhost', '127.0.0.1', '[::1]'].includes(uri.hostname.toLowerCase());
     const pool = new pg.Pool({
-      connectionString: uri.href,
-      ssl: !local,
+      ...sslSettings(uri, local),
       connectionTimeoutMillis: 10_000,
       max: 10,
     });
