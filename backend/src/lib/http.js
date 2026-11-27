@@ -8,6 +8,7 @@
  * signed in (401), role (403), then HTTP method (405).
  */
 import multer from 'multer';
+import { config } from '../config.js';
 
 export class HttpError extends Error {
   constructor(status, body) {
@@ -95,5 +96,8 @@ export function apiErrorHandler(error, req, res, next) { // eslint-disable-line 
     return;
   }
   console.error(error);
-  res.status(500).json({ message: 'Something went wrong on the server. Please try again.' });
+  const body = { message: 'Something went wrong on the server. Please try again.' };
+  // Details only with DEBUG=true in .env; the stack trace is never sent.
+  if (config.debug) body.debug = String(error?.message || error);
+  res.status(500).json(body);
 }

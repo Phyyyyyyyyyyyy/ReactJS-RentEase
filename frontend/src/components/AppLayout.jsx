@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFlash } from '../context/FlashContext';
 import { api } from '../lib/api';
 import { asset, ROLE_MENUS } from '../lib/constants';
+import ErrorBoundary from './ErrorBoundary';
 import Icon from './Icon';
 import { Avatar, BusyButton, Messages, PingDot, ThemeToggle } from './ui';
 
@@ -133,7 +134,9 @@ export default function AppLayout() {
           </header>
           <div className="content-area">
             <Messages />
-            <Outlet />
+            <ErrorBoundary resetKey={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>
