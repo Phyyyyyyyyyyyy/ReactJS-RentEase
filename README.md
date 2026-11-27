@@ -19,7 +19,7 @@ backend/            Node.js API (Express)
   src/routes/       every /api endpoint, one file per area (see "Who owns what" below)
   src/billing.js    monthly rent charges and balances
   src/leases.js     creating leases on approval
-  src/gcash.js      GCashGateway (sandbox online payments)
+  src/gcash.js      GCashGateway (local sandbox or PayMongo test/live)
   src/notifications.js  in-app notifications and rent reminders
   src/referrals.js     referral codes (needed to sign up)
   src/schema.js     database tables
@@ -129,7 +129,17 @@ The suite covers registration with referral codes, sign-in (including CSRF), rol
 - **Apply** for a vacant unit with an optional move-in date and message. No past dates, no occupied units, one pending application per unit.
 - **My Applications** with status tabs; edit or withdraw while pending.
 - **Rent & Payments**: monthly balance, overdue months, credit, history, and the lease (dates, rent, deposit).
-- **Pay online with GCash**: choose an amount, pay on the checkout screen, and the payment counts immediately with a printable official receipt. This runs in **sandbox (test) mode**: no real money moves. Real GCash payments need a merchant account with a provider such as PayMongo; `src/gcash.js` is where it would plug in.
+- **Pay online with GCash**: choose an amount and continue to a hosted checkout. The local sandbox simulates a payment; PayMongo test mode exercises its hosted checkout without charging real money; PayMongo live mode charges real money and records the payment after a verified webhook (or a server-side status check on return). A confirmed payment gets a RentEase receipt. Configure the gateway with `PAYMONGO_MODE`, `PAYMONGO_SECRET_KEY`, and `PAYMONGO_WEBHOOK_SECRET` in `backend/.env` or the hosting environment.
+
+### PayMongo setup
+
+The PayMongo hosted-checkout integration is implemented in `backend/src/gcash.js` and `backend/src/routes/gcash.js`. Keep the API key and webhook secret on the backend; never put them in the React app.
+
+1. Start with PayMongo **test mode**: set `PAYMONGO_MODE=test`, use the matching `sk_test_...` secret key, and configure a test-mode webhook for `checkout_session.payment.paid` at `https://YOUR_PUBLIC_DOMAIN/api/payments/webhooks/paymongo/`. Copy that endpoint's signing secret into `PAYMONGO_WEBHOOK_SECRET`.
+2. Set `PUBLIC_APP_URL` to the public HTTPS address of the app. Verify checkout, webhook confirmation, ledger balance, notification, and receipt in PayMongo test mode.
+3. For real charges, complete PayMongo onboarding, enable GCash on the merchant account, change to `PAYMONGO_MODE=live`, use the matching `sk_live_...` key and live webhook signing secret, and register the same webhook URL in **live mode**. The server rejects mismatched key prefixes and webhook modes. Keep `PAYMONGO_MODE=disabled` to turn online checkout off.
+
+**Settlement model:** this implementation uses one PayMongo merchant account for all online checkouts. Funds settle to that account, and PayMongo fees are deducted from its proceeds by default. It does not yet route proceeds or split settlements to each RentEase property owner. Do not use live payments for multiple independent landlords until the payout model is agreed and an appropriate PayMongo linked-account/split-payments setup is approved and implemented.
 - **Already sent GCash?** Submit the 13-digit reference number (and optionally a screenshot) for the owner to confirm. Pending submissions can be cancelled.
 - **Notifications** (bell in the top bar): application results, payment confirmations, lease changes, and rent reminders (due within 5 days, and monthly while overdue).
 

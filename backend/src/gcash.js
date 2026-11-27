@@ -26,6 +26,8 @@ export class SandboxGCashGateway {
 
   sandboxMode = true;
 
+  mode = 'sandbox';
+
   createCheckout() {
     return { providerId: null, url: null };
   }
@@ -48,12 +50,14 @@ export class PayMongoGateway {
    * @param {string} options.secretKey       PayMongo secret key (sk_test_... or sk_live_...)
    * @param {string} [options.webhookSecret] signing secret shown when the webhook is created
    * @param {string[]} [options.paymentMethods] e.g. ['gcash']
+   * @param {'test'|'live'} [options.mode] Require the matching webhook signature.
    * @param {Function} [options.fetchImpl]   injectable for tests
    */
-  constructor({ secretKey, webhookSecret = '', paymentMethods = ['gcash'], fetchImpl = fetch }) {
+  constructor({ secretKey, webhookSecret = '', paymentMethods = ['gcash'], mode, fetchImpl = fetch }) {
     if (!secretKey) throw new Error('PayMongoGateway needs a secret key.');
     this.webhookSecret = webhookSecret;
     this.paymentMethods = paymentMethods;
+    this.mode = mode;
     this.fetch = fetchImpl;
     this.auth = `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`;
   }
@@ -89,6 +93,9 @@ export class PayMongoGateway {
         },
       },
     });
+    if (!session?.id || !session.attributes?.checkout_url) {
+      throw new Error('PayMongo did not return a checkout ID and URL.');
+    }
     return { providerId: session.id, url: session.attributes.checkout_url };
   }
 
@@ -101,8 +108,8 @@ export class PayMongoGateway {
 
   /**
    * Check PayMongo's Paymongo-Signature header: "t=<unix time>,te=<test sig>,li=<live sig>",
-   * where each signature is HMAC-SHA256(secret, "<t>.<raw body>"). Either signature is
-   * accepted, since only someone holding the secret can produce one. Old requests are refused.
+   * where each signature is HMAC-SHA256(secret, "<t>.<raw body>"). Configured gateways accept
+   * only the signature for their mode. Old requests are refused.
    */
   verifyWebhook(rawBody, header) {
     if (!this.webhookSecret || !header) return false;
@@ -117,7 +124,8 @@ export class PayMongoGateway {
     const expected = Buffer.from(
       createHmac('sha256', this.webhookSecret).update(`${parts.t}.${rawBody}`).digest('hex'),
     );
-    return [parts.te, parts.li].some((signature) => {
+    const signatures = this.mode === 'live' ? [parts.li] : this.mode === 'test' ? [parts.te] : [parts.te, parts.li];
+    return signatures.some((signature) => {
       if (!signature) return false;
       const given = Buffer.from(signature);
       return given.length === expected.length && timingSafeEqual(given, expected);
@@ -125,12 +133,39 @@ export class PayMongoGateway {
   }
 }
 
-/** The gateway for this server: PayMongo when a secret key is configured, otherwise the sandbox. */
-export function defaultGateway() {
-  const { secretKey, webhookSecret, paymentMethods } = config.paymongo;
-  if (!secretKey) return new SandboxGCashGateway();
-  if (!webhookSecret) {
-    console.warn('PAYMONGO_WEBHOOK_SECRET is not set: PayMongo payments will only be confirmed when the tenant returns to RentEase.');
+/** A production server without payment credentials must not offer fake successful payments. */
+export class DisabledGCashGateway {
+  name = 'disabled';
+
+  sandboxMode = false;
+
+  createCheckout() {
+    throw new Error('Online payments are not configured.');
   }
-  return new PayMongoGateway({ secretKey, webhookSecret, paymentMethods });
+
+  verifyWebhook() {
+    return false;
+  }
+}
+
+/** Choose an explicit PayMongo mode; never silently turn a live deployment into sandbox payments. */
+export function defaultGateway() {
+  const { mode, secretKey, webhookSecret, paymentMethods } = config.paymongo;
+  if (mode === 'sandbox') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('The local payment sandbox cannot be enabled in production. Use PAYMONGO_MODE=test, live, or disabled.');
+    }
+    return new SandboxGCashGateway();
+  }
+  if (mode === 'disabled') return new DisabledGCashGateway();
+  if (!['test', 'live'].includes(mode)) throw new Error('PAYMONGO_MODE must be sandbox, test, live, or disabled.');
+  const expectedPrefix = mode === 'live' ? 'sk_live_' : 'sk_test_';
+  if (!secretKey.startsWith(expectedPrefix)) {
+    throw new Error(`PAYMONGO_MODE=${mode} requires a ${expectedPrefix} secret key.`);
+  }
+  if (!webhookSecret) throw new Error(`PAYMONGO_WEBHOOK_SECRET is required when PAYMONGO_MODE=${mode}.`);
+  if (!paymentMethods.length || !paymentMethods.includes('gcash')) {
+    throw new Error('PAYMONGO_PAYMENT_METHODS must include gcash.');
+  }
+  return new PayMongoGateway({ secretKey, webhookSecret, paymentMethods, mode });
 }

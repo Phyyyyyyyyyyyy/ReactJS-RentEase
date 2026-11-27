@@ -49,9 +49,10 @@ export const config = {
   trustProxy: Number(process.env.TRUST_PROXY ?? (ON_RENDER ? 1 : 0)) || 0,
 
   // Create the demo accounts and properties on startup if they don't exist yet
-    // Real GCash payments through PayMongo. Without PAYMONGO_SECRET_KEY the app uses the
-  // sandbox (practice) checkout instead. Keep the secret key on the server only.
+  // PayMongo is opt-in in production. Locally, the no-key default is the in-app sandbox.
+  // Set PAYMONGO_MODE=test/live explicitly when using PayMongo credentials.
   paymongo: {
+    mode: process.env.PAYMONGO_MODE || (process.env.NODE_ENV === 'production' ? 'disabled' : 'sandbox'),
     secretKey: process.env.PAYMONGO_SECRET_KEY || '',
     webhookSecret: process.env.PAYMONGO_WEBHOOK_SECRET || '',
     paymentMethods: list(process.env.PAYMONGO_PAYMENT_METHODS, 'gcash'),

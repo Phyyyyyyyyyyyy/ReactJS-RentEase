@@ -90,6 +90,12 @@ export function paymongoWebhook(db, gateway) {
         return res.status(401).json({ message: 'Invalid signature.' });
       }
       const event = JSON.parse(raw);
+      if (gateway.mode === 'live' && event?.data?.attributes?.livemode !== true) {
+        return res.status(401).json({ message: 'Webhook mode does not match the configured payment mode.' });
+      }
+      if (gateway.mode === 'test' && event?.data?.attributes?.livemode !== false) {
+        return res.status(401).json({ message: 'Webhook mode does not match the configured payment mode.' });
+      }
       const type = event?.data?.attributes?.type;
       const session = event?.data?.attributes?.data;
       if (type === 'checkout_session.payment.paid' && session?.id) {
@@ -122,6 +128,10 @@ export default function gcashRoutes(db, { gateway = defaultGateway() } = {}) {
       if (!tenancy) throw notFound();
       const form = new Form(req.body);
       const amount = form.money('amount', { min: 1 });
+      // PayMongo currently caps GCash wallet payments at PHP 100,000 per checkout.
+      if (gateway.name === 'paymongo' && amount > 10_000_000) {
+        form.error('amount', 'PayMongo GCash checkouts are limited to PHP 100,000 per payment. Use a smaller amount or another payment method.');
+      }
       form.check();
       const code = randomBytes(18).toString('base64url');
       let remote;
