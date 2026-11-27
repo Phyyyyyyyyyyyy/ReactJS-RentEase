@@ -246,7 +246,21 @@ async function cleanUnit(db, body, propertyId, current = null) {
   return values;
 }
 
-const DUPLICATE_UNIT = () => formErrors({ name: ['This property already has a unit with that name.'] });
+/** True if the units matching `where` have a tenancy (approved application) or any payment on record. */
+async function hasTenancyRecords(t, where, value) {
+  const row = await t.get(
+    `SELECT 1 AS x FROM applications a JOIN units u ON u.id = a.unit_id
+     WHERE ${where} AND (a.approved_at IS NOT NULL OR EXISTS (SELECT 1 FROM payments pay WHERE pay.tenancy_id = a.id))
+     LIMIT 1`,
+    [value],
+  );
+  return Boolean(row);
+}
+
+const PROTECTED = (name) => `${name} has tenancy, lease, or payment records, so it can't be deleted. `
+  + 'End the lease instead; the records stay for the statement of account.';
+
+const DUPLICATE_UNIT =() => formErrors({ name: ['This property already has a unit with that name.'] });
 
 // ---------------------------------------------------------------------- routes
 
@@ -498,9 +512,14 @@ export default function propertiesRoutes(db) {
       const updated = await db.get('SELECT * FROM properties WHERE id = ?', [prop.id]);
       return { property: propertyJson(updated), message: `${updated.name} updated.` };
     },
+    // Like Django's on_delete=PROTECT: a property with tenancy records (leases, payments) can't be
+    // deleted, since that would erase them. Pending or rejected applications are removed with it.
     DELETE: async (req) => {
       const prop = await ownProperty(req);
-      await db.run('DELETE FROM properties WHERE id = ?', [prop.id]); // its units and applications go too
+      await db.tx(async (t) => {
+        if (await hasTenancyRecords(t, 'u.property_id = ?', prop.id)) throw fail(PROTECTED(prop.name));
+        await t.run('DELETE FROM properties WHERE id = ?', [prop.id]);
+      });
       return { message: `${prop.name} deleted.` };
     },
   });
@@ -598,7 +617,10 @@ export default function propertiesRoutes(db) {
     },
     DELETE: async (req) => {
       const unit = await ownUnit(req);
-      await db.run('DELETE FROM units WHERE id = ?', [unit.id]);
+      await db.tx(async (t) => {
+        if (await hasTenancyRecords(t, 'u.id = ?', unit.id)) throw fail(PROTECTED(unit.name));
+        await t.run('DELETE FROM units WHERE id = ?', [unit.id]);
+      });
       return { message: `${unit.name} deleted.`, property_id: unit.property_id };
     },
   });

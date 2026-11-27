@@ -108,9 +108,11 @@ export default function adminRoutes(db) {
         sql += ', password = ?';
         params.push(await hashPassword(password));
       }
-      await db.run(`${sql} WHERE id = ?`, [...params, user.id]);
-      // A new password or a deactivated account ends that user's sessions.
-      if ((password && !self) || !values.is_active) await db.run('DELETE FROM sessions WHERE user_id = ?', [user.id]);
+      await db.tx(async (t) => {
+        await t.run(`${sql} WHERE id = ?`, [...params, user.id]);
+        // A new password or a deactivated account ends that user's sessions (in the same transaction).
+        if ((password && !self) || !values.is_active) await t.run('DELETE FROM sessions WHERE user_id = ?', [user.id]);
+      });
       const updated = await findUser(db, user.id);
       return { user: userJson(updated), message: `Account ${updated.username} updated.` };
     },

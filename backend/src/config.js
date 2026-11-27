@@ -32,6 +32,10 @@ function flag(value, fallback = false) {
 export const ON_RENDER = flag(process.env.RENDER);
 
 export const config = {
+  // DEBUG=true adds the error's message to 500 responses (for local development only).
+  // Off by default; never turn it on for the live site.
+  debug: flag(process.env.DEBUG),
+
   host: process.env.HOST || (ON_RENDER ? '0.0.0.0' : '127.0.0.1'),
   port: Number(process.env.PORT) || 8000,
 

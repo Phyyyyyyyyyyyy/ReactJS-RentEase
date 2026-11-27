@@ -126,9 +126,11 @@ export function PageSkeleton() {
 
 /** Shown when a page's data could not be loaded (404, server down…). */
 export function LoadError({ error }) {
+  const title = error.status === 404 ? '404 · Not found'
+    : error.status === 403 ? '403 · No access'
+      : error.status >= 500 ? '500 · Server error' : 'Could not load this page';
   return (
-    <EmptyState icon="file" title={error.status === 404 ? 'Not found' : 'Could not load this page'}
-      text={error.message}>
+    <EmptyState icon="file" title={title} text={error.message}>
       <Link to="/dashboard" className="mt-4 text-sm font-bold text-brand no-underline">Back to dashboard →</Link>
     </EmptyState>
   );

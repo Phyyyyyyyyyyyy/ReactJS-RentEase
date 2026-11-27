@@ -47,7 +47,7 @@ function PropertyForm({ property }) {
   };
 
   const onDelete = async () => {
-    if (!window.confirm(`Delete ${property.name} and all its units and applications? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete ${property.name} and all its units and pending applications? This cannot be undone. (Properties with tenants or payment records can't be deleted.)`)) return;
     setDeleting(true);
     try {
       const data = await api(`/owner/properties/${property.id}/`, { method: 'DELETE' });

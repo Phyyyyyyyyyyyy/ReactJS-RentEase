@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useFlash } from '../context/FlashContext';
 import { api } from '../lib/api';
@@ -10,11 +10,14 @@ import { api } from '../lib/api';
  */
 export function useAction() {
   const [busyKey, setBusyKey] = useState(null);
+  const inFlight = useRef(false);
   const { notify } = useFlash();
   const { refreshBadges } = useAuth();
 
   const run = async (key, path, { confirm: question, body, request, onDone } = {}) => {
+    if (inFlight.current) return; // a click while another action is still running
     if (question && !window.confirm(question)) return;
+    inFlight.current = true;
     setBusyKey(key);
     try {
       // `request` replaces the default POST (e.g. a DELETE).
@@ -26,6 +29,7 @@ export function useAction() {
       notify('error', error.message);
       if (onDone) await onDone(null);
     } finally {
+      inFlight.current = false;
       setBusyKey(null);
     }
   };

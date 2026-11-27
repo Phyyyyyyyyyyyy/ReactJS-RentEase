@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFlash } from '../context/FlashContext';
 
 /**
@@ -12,6 +12,7 @@ export function useForm(initial) {
   const [values, setValues] = useState(initial);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const { notify } = useFlash();
 
   const setValue = useCallback((name, value) => setValues((v) => ({ ...v, [name]: value })), []);
@@ -32,6 +33,9 @@ export function useForm(initial) {
 
   /** Run `action(values)`. Resolves to its result, or undefined if it failed. */
   const submit = async (action) => {
+    // Ignore a second submit (double click / Enter twice) while the first is still saving.
+    if (inFlight.current) return undefined;
+    inFlight.current = true;
     setBusy(true);
     setErrors({});
     try {
@@ -47,6 +51,7 @@ export function useForm(initial) {
       }
       return undefined;
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };

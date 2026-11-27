@@ -1,6 +1,6 @@
 /** Start the RentEase API server: `npm start` (or `npm run dev` to restart on code changes). */
 import { createApp } from './app.js';
-import { config } from './config.js';
+import { config, ON_RENDER } from './config.js';
 import { openDatabase } from './db.js';
 import { ensureAdmin } from './bootstrap.js';
 import { backfillLeases } from './leases.js';
@@ -33,6 +33,10 @@ const adminStatus = await ensureAdmin(db, {
   username: process.env.ADMIN_USERNAME, email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD,
 });
 if (adminStatus) console.log(adminStatus);
+
+if (config.debug) {
+  console.warn(`DEBUG is on: 500 responses include error messages.${ON_RENDER ? ' Turn it off on the live site (remove DEBUG).' : ''}`);
+}
 
 const app = createApp(db);
 
