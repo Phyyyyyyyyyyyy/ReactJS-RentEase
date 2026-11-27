@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { usePageTitle } from '../../components/AppLayout';
 import Icon from '../../components/Icon';
 import { BusyButton, LoadError, PageSkeleton } from '../../components/ui';
@@ -12,15 +12,31 @@ import { formatDate, peso } from '../../lib/format';
 /**
  * /payments/checkout/:code: the GCash payment screen.
  * In sandbox mode this is RentEase's own test screen and no real money moves.
+ * With PayMongo, "Pay" sends the tenant to PayMongo's GCash page; when they come
+ * back, this page keeps checking until the payment shows up.
  */
 export default function Checkout() {
   usePageTitle('Rent & Payments', 'GCash checkout');
   const { code } = useParams();
   const { data, error, reload } = useApi(`/payments/checkout/${code}/`);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { flash, notify } = useFlash();
   const { refreshBadges } = useAuth();
   const [busy, setBusy] = useState(null);
+
+  const returned = searchParams.get('returned') === '1';
+  const pending = data?.checkout?.status === 'pending';
+  // Back from PayMongo: the webhook or PayMongo's own record may take a few seconds. Check for up to a minute.
+  useEffect(() => {
+    if (!returned || !pending) return undefined;
+    const timer = setInterval(reload, 4000);
+    const stop = setTimeout(() => clearInterval(timer), 60_000);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(stop);
+    };
+  }, [returned, pending, reload]);
 
   if (error) return <LoadError error={error} />;
   if (!data) return <PageSkeleton />;
@@ -30,6 +46,11 @@ export default function Checkout() {
     setBusy(action);
     try {
       const result = await api(`/payments/checkout/${code}/${action}/`, { method: 'POST' });
+      if (result.redirect_url) {
+        // Hand over to PayMongo's page. The button stays busy until the browser leaves this page.
+        window.location.assign(result.redirect_url);
+        return;
+      }
       flash('success', result.message);
       refreshBadges();
       navigate(action === 'pay' ? `/payments/receipt/${result.payment_id}` : '/payments');
@@ -60,6 +81,11 @@ export default function Checkout() {
         <div className="grid gap-2 border-t border-slate-100 p-6">
           {checkout.status === 'pending' ? (
             <>
+              {returned && (
+                <p className="m-0 text-center text-sm text-slate-600" role="status">
+                  Checking with GCash whether your payment went through. If you have just paid, please wait a moment before paying again.
+                </p>
+              )}
               <BusyButton type="button" className="primary-button full cursor-pointer" busy={busy === 'pay'} busyText="Paying…"
                 disabled={Boolean(busy)} onClick={() => act('pay')}>
                 <Icon name="check" size={18} />Pay {peso(checkout.amount)}

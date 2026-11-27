@@ -14,7 +14,7 @@ import { defaultGateway } from './gcash.js';
 import adminRoutes from './routes/admin.js';
 import referralsRoutes from './routes/referrals.js';
 import financesRoutes from './routes/finances.js';
-import gcashRoutes from './routes/gcash.js';
+import gcashRoutes, { paymongoWebhook } from './routes/gcash.js';
 import statementsRoutes from './routes/statements.js';
 import leasesRoutes from './routes/leases.js';
 import notificationsRoutes from './routes/notifications.js';
@@ -78,6 +78,10 @@ export function createApp(db, {
   api.use(adminRoutes(db));
   api.use(() => { throw notFound(); });
   api.use(apiErrorHandler);
+  // PayMongo's webhook is mounted before the API: it is called by PayMongo, not by a signed-in
+  // user, so it has no CSRF token, and it needs the raw body to check the signature.
+  app.post('/api/payments/webhooks/paymongo/', express.raw({ type: 'application/json', limit: '1mb' }),
+    paymongoWebhook(db, gateway));
   app.use('/api', api);
 
   // ---------------------------------------------------- uploaded images

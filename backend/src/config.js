@@ -49,6 +49,20 @@ export const config = {
   trustProxy: Number(process.env.TRUST_PROXY ?? (ON_RENDER ? 1 : 0)) || 0,
 
   // Create the demo accounts and properties on startup if they don't exist yet
+    // Real GCash payments through PayMongo. Without PAYMONGO_SECRET_KEY the app uses the
+  // sandbox (practice) checkout instead. Keep the secret key on the server only.
+  paymongo: {
+    secretKey: process.env.PAYMONGO_SECRET_KEY || '',
+    webhookSecret: process.env.PAYMONGO_WEBHOOK_SECRET || '',
+    paymentMethods: list(process.env.PAYMONGO_PAYMENT_METHODS, 'gcash'),
+  },
+  // Where PayMongo sends the tenant back after paying. Render sets RENDER_EXTERNAL_URL itself.
+  publicAppUrl: (process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173').replace(/\/+$/, ''),
+
+
+
+
+
   // (useful where there's no shell to run `npm run seed`, like Render's free plan).
   seedDemoData: flag(process.env.SEED_DEMO_DATA),
 

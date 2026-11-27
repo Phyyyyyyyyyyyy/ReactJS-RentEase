@@ -222,11 +222,17 @@ $$;
  * the column added on startup; `fill` sets the value for the rows already there.
  */
 export const ADDED_COLUMNS = [
+// PayMongo Payment Intent associated with an online GCash checkout.
   {
-    table: 'users',
-    column: 'referral_code_id',
-    type: '{REF}',
+    table: 'gcash_checkouts',
+    column: 'paymongo_payment_intent_id',
+    type: 'TEXT',
   },
+  {
+  table: 'gcash_checkouts',
+  column: 'paymongo_client_key',
+  type: 'TEXT',
+},
   {
     table: 'properties',
     column: 'manager_id',
@@ -254,6 +260,11 @@ export const ADDED_COLUMNS = [
   { table: 'leases', column: 'payment_interval_months', type: 'INTEGER NOT NULL DEFAULT 1' },
   // How many months a bill covers.
   { table: 'rent_charges', column: 'months', type: 'INTEGER NOT NULL DEFAULT 1' },
+    // Online checkouts: which gateway took it ('sandbox' or 'paymongo'), and PayMongo's
+  // checkout id and hosted payment page, so the webhook and the checkout page can find it.
+  { table: 'gcash_checkouts', column: 'provider', type: "TEXT NOT NULL DEFAULT 'sandbox'" },
+  { table: 'gcash_checkouts', column: 'provider_checkout_id', type: 'TEXT' },
+  { table: 'gcash_checkouts', column: 'provider_url', type: 'TEXT' },
 ];
 
 /** Data changes that are safe to run on every start (they do nothing once applied). */
