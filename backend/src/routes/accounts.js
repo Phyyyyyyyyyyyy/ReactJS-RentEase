@@ -99,8 +99,13 @@ export default function accountsRoutes(db, { mediaDir, limits = DEFAULT_LIMITS }
       const username = form.text('username', { max: 254 });
       const password = form.text('password', { strip: false });
       form.check();
-      const lookup = username.includes('@') ? 'email' : 'username';
-      const user = await db.get(`SELECT * FROM users WHERE LOWER(${lookup}) = LOWER(?)`, [username]);
+      // Usernames may contain '@', so always try both. A username match wins over
+      // another account whose email happens to be the same text.
+      const user = await db.get(
+        `SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)
+         ORDER BY CASE WHEN LOWER(username) = LOWER(?) THEN 0 ELSE 1 END, id LIMIT 1`,
+        [username, username, username],
+      );
       // Count by account id, so switching between username and email doesn't reset the count.
       const accountKey = user ? `user:${user.id}` : `name:${username.toLowerCase()}`;
       const wait = Math.max(failedLoginsPerAccount.retryAfter(accountKey), failedLoginsPerAddress.retryAfter(req.ip));

@@ -95,6 +95,54 @@ describe('sign in and out', () => {
     }
   });
 
+  const signInAs = async (identifier, password = PASSWORD) => {
+    const response = await client.post('/auth/login/', { username: identifier, password });
+    const who = (await client.get('/auth/session/')).json.user?.username;
+    await client.post('/auth/logout/');
+    return { status: response.status, who };
+  };
+
+  it('ignores case and surrounding spaces in the username', async () => {
+    for (const identifier of ['Tina', '  tina  ', 'TiNa\t', ' TINA@EXAMPLE.COM ']) {
+      assert.deepEqual(await signInAs(identifier), { status: 200, who: 'tina' }, identifier);
+    }
+  });
+
+  it('works for a username that contains @', async () => {
+    await makeUser(db, 'juan@home', 'tenant', { email: 'juan@example.com' });
+    assert.deepEqual(await signInAs('juan@home'), { status: 200, who: 'juan@home' });
+    assert.deepEqual(await signInAs('juan@example.com'), { status: 200, who: 'juan@home' });
+  });
+
+  it("prefers the username when it equals another account's email", async () => {
+    await makeUser(db, 'mark@example.com', 'owner', { email: 'mark.owner@example.com' });
+    await makeUser(db, 'mark', 'tenant'); // email mark@example.com
+    assert.deepEqual(await signInAs('mark@example.com'), { status: 200, who: 'mark@example.com' });
+    assert.deepEqual(await signInAs('mark'), { status: 200, who: 'mark' });
+  });
+
+  it('works with the username for accounts made by sign-up and by an admin', async () => {
+    await makeReferral(db, 'owner', 'JOIN-OWNER');
+    let response = await client.post('/auth/register/', {
+      first_name: 'Olive', last_name: 'Reyes', username: 'OliveR', email: 'olive@example.com', phone: '09170000000',
+      referral_code: 'JOIN-OWNER', password1: PASSWORD, password2: PASSWORD,
+    });
+    assert.equal(response.status, 201);
+    assert.deepEqual(await signInAs('OliveR'), { status: 200, who: 'OliveR' });
+    assert.deepEqual(await signInAs('oliver'), { status: 200, who: 'OliveR' });
+
+    const admin = await makeUser(db, 'boss', 'admin');
+    await client.login(admin);
+    response = await client.post('/admin/users/', {
+      first_name: 'Mae', last_name: 'Cruz', username: 'mae.cruz', email: 'mae@example.com', phone: '09171112222',
+      role: 'manager', password1: PASSWORD, password2: PASSWORD,
+    });
+    assert.equal(response.status, 201, JSON.stringify(response.json));
+    await client.post('/auth/logout/');
+    assert.deepEqual(await signInAs('mae.cruz'), { status: 200, who: 'mae.cruz' });
+    assert.deepEqual(await signInAs('mae@example.com'), { status: 200, who: 'mae.cruz' });
+  });
+
   it('shows an error for wrong credentials', async () => {
     const response = await client.post('/auth/login/', { username: 'tina', password: 'wrong' });
     assert.equal(response.status, 400);
